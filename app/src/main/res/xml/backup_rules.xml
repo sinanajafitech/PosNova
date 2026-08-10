@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- No sensitive on-device data (auth tokens, PINs) should be included in backups. -->
+</full-backup-content>

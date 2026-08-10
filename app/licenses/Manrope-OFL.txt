@@ -1,0 +1,7 @@
+Manrope font family, bundled under the SIL Open Font License 1.1.
+Source: https://github.com/google/fonts/tree/main/ofl/manrope (Manrope[wght].ttf)
+Static weight instances (manrope_light/regular/medium/semibold/bold/extrabold.ttf)
+were generated locally from the upstream variable font using fonttools'
+varLib.instancer, matching the weights used by the POSNova design system's type
+scale (Regular 400, Medium 500, SemiBold 600, plus Light/Bold/ExtraBold for
+completeness). Full license text: https://openfontlicense.org

@@ -1,0 +1,732 @@
+openapi: 3.0.3
+info:
+  title: FIRE HUT PIZZA & WRAPS — Device (EPOS) API
+  version: "1.0.0"
+  description: |
+    This documents the **real, live API** the Android Order App / Kitchen
+    Display terminals use to talk to the Admin backend. It reflects the
+    actual implementation in `AAtish/Admin/src/app/api/device/*` — not a
+    speculative design.
+
+    ### Where this runs
+    - Base URL: `https://admin.firehut.uk`
+    - Implementation: Next.js API routes (`src/app/api/device/**`), Prisma +
+      PostgreSQL, Socket.IO for real-time push
+    - Customer ordering site (separate app, not covered here):
+      `https://firehut.uk`
+
+    ### Authentication
+    A device logs in once with a shared username/password (issued to that
+    physical till/tablet from **Admin → Settings → Devices** — there is
+    currently no public "create device" API endpoint, only the admin-panel
+    action) and receives a long-lived bearer token:
+
+    ```
+    POST /api/device/auth/login
+    Authorization: (none — this call itself establishes the session)
+    ```
+
+    Every other `/api/device/*` call requires:
+
+    ```
+    Authorization: Bearer <token>
+    ```
+
+    Sessions last 180 days (a counter tablet is expected to just stay
+    logged in). A device that hasn't hit any authenticated endpoint for 45
+    seconds is considered offline (`lastSeenAt` is bumped on every call —
+    the app polls `/api/device/orders/pending` every 15s, so 3 missed polls
+    = offline).
+
+    ### How a new order "pops up" on the till
+    There are **two channels working together**, not one:
+
+    1. **Real-time push (primary).** When an order is placed, the ordering
+       site (or another internal caller) calls the *server-to-server*
+       endpoint `POST /api/orders/broadcast` with a shared secret. That
+       handler emits a `new_order` event over **Socket.IO** to every
+       connected client. The Android app should hold an open Socket.IO
+       connection to `https://admin.firehut.uk` and show the pop-up the
+       instant `new_order` arrives.
+    2. **Polling fallback (recovery).** The app also polls
+       `GET /api/device/orders/pending` every 15 seconds regardless, so an
+       order is never missed if the socket briefly drops or the app was
+       just launched. This same call piggybacks branding (`storeName`,
+       `primaryColor`, `logoUrl`) and receipt/print preferences so those
+       stay current without a separate sync step.
+
+    Other Socket.IO events an admin/device client may see: `order_status_updated`
+    (an order moved to a new status from *any* source — another device or
+    the Admin dashboard), `order_payment_updated`, `store_status_updated`
+    (the accepting-orders toggle changed).
+
+    ### Branding / logo
+    There is still **no separate logo-upload endpoint for devices**.
+    `logoUrl`, `storeName` and `primaryColor` are managed in Admin →
+    Settings → Store and simply ride along inside the
+    `/api/device/auth/login` and `/api/device/orders/pending` responses.
+
+    ### Menu / food items
+    `GET /api/device/menu` returns the full food catalog — categories,
+    products (with price, allergens, item type), sizes and the global
+    add-ons list — for a till that rings up walk-in/phone orders itself
+    rather than only receiving orders already built on the website. Orders
+    themselves still carry item names/sizes/add-ons resolved inline
+    (`DeviceOrder`), independent of this endpoint.
+
+    Product/category `imageUrl` values are `data:image/...;base64,...`
+    inline data URIs (images live in the database, not as hosted files) —
+    a plain URL image loader will not decode these directly.
+
+    ### "Admin can enable/disable features"
+    The one implemented feature toggle today is **accepting orders**
+    (store open/closed for new orders), settable from either the device
+    itself (`POST /api/device/store-status`) or the Admin dashboard, and
+    broadcast to everyone live via `store_status_updated`. There is no
+    generic feature-flag table yet — if you want per-feature toggles
+    (e.g. disable delivery vs collection independently), that's new work,
+    not something already built.
+
+  contact:
+    name: Cybercina
+    email: info@cybercina.co.uk
+
+servers:
+  - url: https://admin.firehut.uk
+    description: Production (Admin + Device API)
+
+security:
+  - DeviceBearerAuth: []
+
+tags:
+  - name: Device Auth
+  - name: Device Menu
+  - name: Device Orders
+  - name: Device Printing
+  - name: Device Store Status
+  - name: Device Reports
+  - name: Realtime (Socket.IO)
+  - name: Server-to-Server
+
+paths:
+  # ---------------------------------------------------------------------
+  # AUTH
+  # ---------------------------------------------------------------------
+  /api/device/auth/login:
+    post:
+      tags: [Device Auth]
+      summary: Log a till/tablet in and obtain a bearer token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+                deviceId:
+                  type: string
+                  nullable: true
+                  description: >-
+                    Android's Settings.Secure.ANDROID_ID — recorded against
+                    this device row as hardwareId so physical units can be
+                    told apart (real IMEI isn't readable on Android 10+).
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string, description: Bearer token, valid 180 days }
+                  device:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      name: { type: string }
+                  storeName: { type: string, example: "FIRE HUT PIZZA & WRAPS" }
+                  primaryColor: { type: string, example: "#EB1400" }
+                  logoUrl: { type: string, nullable: true }
+        "400": { description: Missing username/password }
+        "401": { description: Invalid credentials, or device deactivated }
+
+  # ---------------------------------------------------------------------
+  # MENU
+  # ---------------------------------------------------------------------
+  /api/device/menu:
+    get:
+      tags: [Device Menu]
+      summary: Full food catalog, for a till that builds its own orders
+      description: >-
+        Active categories only, each with its enabled products (sizes
+        filtered to active ones), plus the global add-ons list. A product
+        with status EIGHTY_SIXED is still included but `available: false`
+        so staff see it's temporarily out rather than have it vanish.
+        `imageUrl` values are inline base64 data URIs, not hosted links —
+        the response can get large with many product photos.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items: { $ref: '#/components/schemas/MenuCategory' }
+                  addOns:
+                    type: array
+                    items: { $ref: '#/components/schemas/MenuAddOn' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------------------------------------------------------------
+  # ORDERS
+  # ---------------------------------------------------------------------
+  /api/device/orders/pending:
+    get:
+      tags: [Device Orders]
+      summary: Orders awaiting accept/reject (poll every ~15s)
+      description: >-
+        Also carries current branding and receipt/print preferences so a
+        change in Admin reaches an already-logged-in device without a
+        fresh login.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items: { $ref: '#/components/schemas/DeviceOrder' }
+                  storeName: { type: string }
+                  primaryColor: { type: string }
+                  logoUrl: { type: string, nullable: true }
+                  receiptPrefs: { $ref: '#/components/schemas/ReceiptPrefs' }
+                  notificationSoundUrl:
+                    type: string
+                    nullable: true
+                    description: null = use the sound bundled in the app itself
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /api/device/orders/history:
+    get:
+      tags: [Device Orders]
+      summary: Recently-actioned orders (accepted onward, from any device)
+      description: >-
+        Excludes PENDING and CANCELLED — populated from the accept flow,
+        not reject, matching current app behaviour.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 100 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items: { $ref: '#/components/schemas/DeviceOrder' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /api/device/orders/{id}/accept:
+    parameters:
+      - $ref: '#/components/parameters/OrderIdPath'
+    post:
+      tags: [Device Orders]
+      summary: Accept an order
+      description: Moves it out of PENDING and triggers the kitchen/order print flow.
+      responses:
+        "200":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  printWarnings:
+                    type: array
+                    items: { type: string }
+        "400": { description: "Couldn't accept this order (reason in `error`)" }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /api/device/orders/{id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/OrderIdPath'
+    post:
+      tags: [Device Orders]
+      summary: Reject/cancel an order
+      responses:
+        "200":
+          description: Rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { ok: { type: boolean } }
+        "400": { description: "Couldn't reject this order (reason in `error`)" }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /api/device/orders/{id}/payment-link:
+    parameters:
+      - $ref: '#/components/parameters/OrderIdPath'
+    post:
+      tags: [Device Orders]
+      summary: Create a scan-to-pay QR code for this order's outstanding balance
+      description: >-
+        Creates (or re-creates) a Stripe Checkout Session for the order and
+        returns both the raw URL and a ready-to-display QR code PNG — for a
+        till taking a walk-in/phone order to show the customer to scan and
+        pay by card, without the till handling any card details itself.
+        Same underlying flow as the "Payment QR" button in Admin's order
+        view, just reachable from the till.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                    description: Stripe Checkout URL, in case the till wants to render its own QR instead
+                  qrCodeDataUrl:
+                    type: string
+                    description: "data:image/png;base64,... — ready to display directly"
+        "400":
+          description: Order not found, already paid, or Stripe isn't configured (reason in `error`)
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------------------------------------------------------------
+  # PRINTING
+  # ---------------------------------------------------------------------
+  /api/device/orders/{id}/receipt:
+    parameters:
+      - $ref: '#/components/parameters/OrderIdPath'
+    get:
+      tags: [Device Printing]
+      summary: Customer receipt data, for the app to print via the Sunmi InnerPrinter SDK
+      description: >-
+        Same content/wording as the Sunmi Cloud Print and Bluetooth
+        (ESC/POS) receipts — handed over as structured JSON instead of
+        pre-rendered print blocks so the app formats it for its own printer.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReceiptData' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { description: Order not found }
+
+  /api/device/orders/{id}/ticket:
+    parameters:
+      - $ref: '#/components/parameters/OrderIdPath'
+    get:
+      tags: [Device Printing]
+      summary: Kitchen ticket data, for the app to print via the Sunmi InnerPrinter SDK
+      description: Deliberately excludes price and customer name (back-of-house only).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KitchenTicketData' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { description: Order not found }
+
+  # ---------------------------------------------------------------------
+  # STORE STATUS
+  # ---------------------------------------------------------------------
+  /api/device/store-status:
+    get:
+      tags: [Device Store Status]
+      summary: Is the store currently accepting new orders?
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { acceptingOrders: { type: boolean } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Device Store Status]
+      summary: Open/close the store for new orders
+      description: Broadcasts `store_status_updated` over Socket.IO to every connected client.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [acceptingOrders]
+              properties: { acceptingOrders: { type: boolean } }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  acceptingOrders: { type: boolean }
+        "400": { description: acceptingOrders must be true or false }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------------------------------------------------------------
+  # REPORTS
+  # ---------------------------------------------------------------------
+  /api/device/z-report:
+    get:
+      tags: [Device Reports]
+      summary: End-of-day till (Z) report
+      parameters:
+        - name: date
+          in: query
+          description: YYYY-MM-DD, server-local date. Defaults to today.
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ZReport' }
+        "400": { description: Invalid date }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------------------------------------------------------------
+  # SERVER-TO-SERVER (not called by the device itself)
+  # ---------------------------------------------------------------------
+  /api/orders/broadcast:
+    post:
+      tags: [Server-to-Server]
+      summary: Push a just-placed order to every connected device instantly
+      security: []
+      description: >-
+        Called by the ordering site's own order-creation flow (or any other
+        trusted internal caller) right after an order is saved — **not**
+        something the EPOS/device itself calls. Authenticated with a shared
+        secret instead of a device bearer token because the caller isn't a
+        logged-in device.
+      parameters:
+        - name: X-Broadcast-Secret
+          in: header
+          required: true
+          schema: { type: string }
+          description: Must equal the server's ORDER_BROADCAST_SECRET env value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NewOrderBroadcastPayload' }
+      responses:
+        "200":
+          description: Emitted (or not, if no Socket.IO server was attached)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  delivered:
+                    type: boolean
+                    description: false only means no Socket.IO instance was running — devices on the polling fallback still pick the order up within 15s
+        "400": { description: Invalid request body }
+        "401": { description: Missing/incorrect X-Broadcast-Secret }
+
+components:
+  securitySchemes:
+    DeviceBearerAuth:
+      type: http
+      scheme: bearer
+      description: "Token obtained from `POST /api/device/auth/login`. Sent as `Authorization: Bearer <token>`."
+
+  parameters:
+    OrderIdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Missing/expired bearer token, or device deactivated
+      content:
+        application/json:
+          schema:
+            type: object
+            properties: { error: { type: string, example: Unauthorized } }
+
+  schemas:
+    OrderType:
+      type: string
+      enum: [DELIVERY, COLLECTION, DINE_IN]
+
+    ItemType:
+      type: string
+      nullable: true
+      enum: [VEG, NON_VEG, EGG, DRINK, HALAL, OTHER]
+
+    MenuProductSize:
+      type: object
+      properties:
+        id: { type: string }
+        label: { type: string, example: Large }
+        price: { type: number, format: float }
+
+    MenuProduct:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, example: Margherita Pizza }
+        description: { type: string, nullable: true }
+        price:
+          type: number
+          format: float
+          description: Base price — the price to use when the product has no sizes
+        imageUrl:
+          type: string
+          nullable: true
+          description: "data:image/...;base64,... inline data URI, not a hosted URL"
+        itemType: { $ref: '#/components/schemas/ItemType' }
+        isFeatured: { type: boolean }
+        available:
+          type: boolean
+          description: false when the product's status is EIGHTY_SIXED (temporarily out)
+        allergens: { type: array, items: { type: string } }
+        sizes:
+          type: array
+          items: { $ref: '#/components/schemas/MenuProductSize' }
+
+    MenuCategory:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, example: Pizzas }
+        description: { type: string, nullable: true }
+        imageUrl:
+          type: string
+          nullable: true
+          description: "data:image/...;base64,... inline data URI, not a hosted URL"
+        products:
+          type: array
+          items: { $ref: '#/components/schemas/MenuProduct' }
+
+    MenuAddOn:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, example: Extra cheese }
+        price: { type: number, format: float }
+
+    DeviceOrderItem:
+      type: object
+      properties:
+        id: { type: string }
+        productName: { type: string }
+        sizeLabel: { type: string, nullable: true }
+        quantity: { type: integer }
+        addOnNames: { type: array, items: { type: string } }
+        lineTotal: { type: number, format: float }
+
+    DeviceOrder:
+      type: object
+      description: >-
+        Shape returned by both /orders/pending and /orders/history — item
+        names/sizes/add-ons are already resolved server-side, there is no
+        separate menu the device needs to look up.
+      properties:
+        id: { type: string }
+        number: { type: string, example: "WEB-10231" }
+        type: { $ref: '#/components/schemas/OrderType' }
+        typeLabel: { type: string, example: Delivery }
+        createdAt: { type: string, format: date-time }
+        customerName: { type: string, example: Guest }
+        customerPhone: { type: string, nullable: true }
+        deliveryAddress: { type: string, nullable: true, description: Only set when type is DELIVERY }
+        tableLabel: { type: string, nullable: true, description: Only set when type is DINE_IN }
+        estimatedTime: { type: string, example: "20-30 min" }
+        notes: { type: string, nullable: true }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceOrderItem' }
+        itemsSubtotal: { type: number, format: float }
+        otherCharges: { type: number, format: float, description: delivery fee etc., derived as total - itemsSubtotal + discountAmount }
+        total: { type: number, format: float }
+
+    ReceiptPrefs:
+      type: object
+      properties:
+        showCustomerName: { type: boolean }
+        showPhone: { type: boolean }
+        showDeliveryAddress: { type: boolean }
+        showPaymentLabel: { type: boolean }
+        showPriceBreakdown: { type: boolean }
+        showThankYouFooter: { type: boolean }
+        headerFontSize: { type: integer }
+        orderBoxFontSize: { type: integer }
+        sectionTitleFontSize: { type: integer }
+        addressFontSize: { type: integer }
+        itemFontSize: { type: integer }
+        footerFontSize: { type: integer }
+        paperSize:
+          type: string
+          enum: [MM_58, MM_80]
+          description: Admin-set printer paper width — overrides any per-device local setting.
+
+    ReceiptItem:
+      type: object
+      properties:
+        label: { type: string, example: "Margherita (Large)" }
+        qty: { type: integer }
+        lineTotal: { type: number, format: float }
+        addOns: { type: array, items: { type: string } }
+        removedIngredients: { type: array, items: { type: string } }
+        notes: { type: string, nullable: true }
+
+    ReceiptData:
+      type: object
+      properties:
+        number: { type: string }
+        storeName: { type: string }
+        createdAt: { type: string, format: date-time }
+        typeLabel: { type: string }
+        customerName: { type: string }
+        customerPhone: { type: string, nullable: true }
+        deliveryAddress: { type: string, nullable: true }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ReceiptItem' }
+        itemsSubtotal: { type: number, format: float }
+        otherCharges: { type: number, format: float }
+        couponCode: { type: string, nullable: true }
+        discountAmount: { type: number, format: float }
+        total: { type: number, format: float }
+        paymentLabel: { type: string, nullable: true }
+        prefs: { $ref: '#/components/schemas/ReceiptPrefs' }
+
+    KitchenTicketItem:
+      type: object
+      properties:
+        label: { type: string, example: "Margherita (Large)" }
+        qty: { type: integer }
+        addOns: { type: array, items: { type: string } }
+        removedIngredients: { type: array, items: { type: string } }
+        notes: { type: string, nullable: true }
+
+    KitchenTicketData:
+      type: object
+      properties:
+        number: { type: string }
+        storeName: { type: string }
+        createdAt: { type: string, format: date-time }
+        typeLabel: { type: string }
+        branchName: { type: string, nullable: true }
+        deliveryAddress: { type: string, nullable: true }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/KitchenTicketItem' }
+        prefs:
+          type: object
+          properties:
+            showBranchName: { type: boolean }
+            showOrderType: { type: boolean }
+            showAddOns: { type: boolean }
+            showRemovedIngredients: { type: boolean }
+            showNotes: { type: boolean }
+            paperSize:
+              type: string
+              enum: [MM_58, MM_80]
+              description: Admin-set printer paper width — overrides any per-device local setting.
+
+    PaymentMethodBreakdown:
+      type: object
+      properties:
+        provider: { type: string, example: CARD }
+        orders: { type: integer }
+        amount: { type: number, format: float }
+
+    TaxRateLine:
+      type: object
+      properties:
+        name: { type: string, example: "UK VAT" }
+        region: { type: string, example: GB }
+        rate: { type: number, format: float, example: 20 }
+        appliesTo: { type: string }
+
+    ZReport:
+      type: object
+      properties:
+        storeName: { type: string }
+        date: { type: string, format: date }
+        isToday: { type: boolean }
+        orderCount: { type: integer }
+        grossSales: { type: number, format: float }
+        refundsTotal: { type: number, format: float }
+        refundsCount: { type: integer }
+        netSales: { type: number, format: float }
+        avgOrderValue: { type: number, format: float }
+        paymentBreakdown:
+          type: array
+          items: { $ref: '#/components/schemas/PaymentMethodBreakdown' }
+        vatAmount: { type: number, format: float }
+        netOfVat: { type: number, format: float }
+        primaryVatRate:
+          allOf: [{ $ref: '#/components/schemas/TaxRateLine' }]
+          nullable: true
+
+    NewOrderBroadcastPayload:
+      type: object
+      required: [id, number, type, total, createdAt, customerName, items]
+      properties:
+        id: { type: string }
+        number: { type: string }
+        type: { $ref: '#/components/schemas/OrderType' }
+        total: { type: number, format: float }
+        createdAt: { type: string, format: date-time }
+        customerName: { type: string }
+        tableNumber: { type: string, nullable: true }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productName: { type: string }
+              sizeLabel: { type: string, nullable: true }
+              quantity: { type: integer }
+              addOnNames: { type: array, items: { type: string } }
+
+x-realtime:
+  description: >-
+    Socket.IO server attached to the same Next.js HTTP server (see
+    src/server.ts). Connect with socket.io-client to https://admin.firehut.uk.
+  events:
+    new_order:
+      direction: server -> client
+      description: A new order was just placed. Payload matches NewOrderBroadcastPayload.
+    order_status_updated:
+      direction: server -> client
+      description: An order changed status, from any source (another device or Admin).
+    order_payment_updated:
+      direction: server -> client
+      description: Payment status changed for an order (e.g. Stripe webhook confirmed payment).
+    store_status_updated:
+      direction: server -> client
+      description: "The accepting-orders toggle changed. Payload: { acceptingOrders: boolean }."
