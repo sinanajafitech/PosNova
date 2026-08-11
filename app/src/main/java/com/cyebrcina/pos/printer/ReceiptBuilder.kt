@@ -116,10 +116,22 @@ object ReceiptBuilder {
         PrintCommand.Cut,
     )
 
+    /**
+     * The API's font-size fields are pixel sizes tuned for a direct bitmap
+     * renderer (see StoreSettings.orderAppHeaderFontSize etc. in the
+     * backend's schema.prisma — "px on the printed page"), not small point
+     * sizes: real values from Admin range roughly 18-44 (footer/item on the
+     * low end, header/order-box on the high end). The old thresholds here
+     * (<=12/16/22) assumed a much smaller scale, so every real-world value
+     * fell into the `else` XLARGE bucket — the entire receipt printed at
+     * one giant size regardless of what Admin had configured per element.
+     * Recalibrated to that actual 18-44 range so the four buckets spread
+     * across it instead of collapsing to one.
+     */
     private fun fontSizeOf(points: Int): PrintTextSize = when {
-        points <= 12 -> PrintTextSize.SMALL
-        points <= 16 -> PrintTextSize.NORMAL
-        points <= 22 -> PrintTextSize.LARGE
+        points <= 20 -> PrintTextSize.SMALL
+        points <= 28 -> PrintTextSize.NORMAL
+        points <= 36 -> PrintTextSize.LARGE
         else -> PrintTextSize.XLARGE
     }
 }
