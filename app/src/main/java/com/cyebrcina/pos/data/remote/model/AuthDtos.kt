@@ -22,6 +22,7 @@ data class LoginResponse(
     val storeName: String,
     val primaryColor: String,
     val logoUrl: String? = null,
+    val customerDisplay: CustomerDisplayConfig? = null,
 )
 
 @Serializable

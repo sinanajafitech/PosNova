@@ -58,6 +58,17 @@ data class ReceiptPrefs(
     val paperSize: String? = null,
 )
 
+/** The D4's secondary customer-facing screen — background image behind the idle/order content,
+ * its opacity (0-100), and an optional looping promo video shown instead of the idle branding
+ * screen when there's nothing else to display. Set from Admin -> Settings -> Devices ->
+ * Customer Display. */
+@Serializable
+data class CustomerDisplayConfig(
+    val backgroundUrl: String? = null,
+    val backgroundOpacity: Int = 100,
+    val idlePromoVideoUrl: String? = null,
+)
+
 @Serializable
 data class PendingOrdersResponse(
     val orders: List<DeviceOrder> = emptyList(),
@@ -66,6 +77,7 @@ data class PendingOrdersResponse(
     val logoUrl: String? = null,
     val receiptPrefs: ReceiptPrefs? = null,
     val notificationSoundUrl: String? = null,
+    val customerDisplay: CustomerDisplayConfig? = null,
 )
 
 @Serializable

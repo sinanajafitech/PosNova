@@ -5,6 +5,7 @@ import com.cyebrcina.pos.data.remote.FireHutDeviceApi
 import com.cyebrcina.pos.data.remote.errorMessageOrDefault
 import com.cyebrcina.pos.data.remote.model.ChargeOrderRequest
 import com.cyebrcina.pos.data.remote.model.CreateOrderRequest
+import com.cyebrcina.pos.data.remote.model.CustomerDisplayConfig
 import com.cyebrcina.pos.data.remote.model.DeviceOrder
 import com.cyebrcina.pos.data.remote.model.PaymentLinkResponse
 import com.cyebrcina.pos.data.remote.model.KitchenTicketData
@@ -47,6 +48,9 @@ class FireHutOrderRepositoryImpl @Inject constructor(
     private val _receiptPrefs = MutableStateFlow<ReceiptPrefs?>(null)
     override val receiptPrefs: StateFlow<ReceiptPrefs?> = _receiptPrefs
 
+    private val _customerDisplay = MutableStateFlow<CustomerDisplayConfig?>(null)
+    override val customerDisplay: StateFlow<CustomerDisplayConfig?> = _customerDisplay
+
     init {
         realtimeManager.orderEvents.onEach { refreshPending() }.launchIn(scope)
     }
@@ -72,6 +76,7 @@ class FireHutOrderRepositoryImpl @Inject constructor(
         val body = response.body() ?: throw IllegalStateException("Empty response")
         _pendingOrders.value = body.orders
         body.receiptPrefs?.let { _receiptPrefs.value = it }
+        body.customerDisplay?.let { _customerDisplay.value = it }
         sessionStore.updateBranding(body.storeName, body.primaryColor, body.logoUrl)
     }.recoverCatching { throw mapNetworkError(it) }
 

@@ -244,20 +244,17 @@ class NewOrderViewModel @Inject constructor(
 
         // Mirrors the cart on the customer-facing display while staff are actively building an
         // order; other screens (e.g. Order Queue) own the display outside this flow.
-        combine(cart, hasStartedOrder, session) { cartItems, started, deviceSession ->
-            Triple(cartItems, started, deviceSession)
-        }.onEach { (cartItems, started, deviceSession) ->
-            if (started) {
-                customerDisplayManager.update(
-                    CustomerDisplayState.BuildingOrder(
-                        storeName = deviceSession?.storeName.orEmpty(),
-                        logoUrl = deviceSession?.logoUrl,
-                        items = cartItems.map { CustomerDisplayLineItem(it.product.name, it.quantity, it.lineTotal) },
-                        total = cartItems.subtotal(),
-                    ),
-                )
-            }
-        }.launchIn(viewModelScope)
+        combine(cart, hasStartedOrder) { cartItems, started -> cartItems to started }
+            .onEach { (cartItems, started) ->
+                if (started) {
+                    customerDisplayManager.update(
+                        CustomerDisplayState.BuildingOrder(
+                            items = cartItems.map { CustomerDisplayLineItem(it.product.name, it.quantity, it.lineTotal) },
+                            total = cartItems.subtotal(),
+                        ),
+                    )
+                }
+            }.launchIn(viewModelScope)
 
         when (val intent = entryCoordinator.consumePending()) {
             is NewOrderEntryIntent.StartAtTable -> startOrder(TillOrderType.DINE_IN, "Walk-in", 1, intent.table)
@@ -276,7 +273,7 @@ class NewOrderViewModel @Inject constructor(
                 qrPayment.value = QrPaymentState()
                 completedOrder.value = updated
                 customerDisplayManager.update(
-                    CustomerDisplayState.NewOrderReceived(updated.number, session.value?.storeName.orEmpty(), session.value?.logoUrl),
+                    CustomerDisplayState.NewOrderReceived(updated.number),
                 )
                 printReceiptAndTicket(updated.id)
             }
@@ -447,7 +444,7 @@ class NewOrderViewModel @Inject constructor(
             .onSuccess { order ->
                 completedOrder.value = order
                 customerDisplayManager.update(
-                    CustomerDisplayState.NewOrderReceived(order.number, session.value?.storeName.orEmpty(), session.value?.logoUrl),
+                    CustomerDisplayState.NewOrderReceived(order.number),
                 )
                 printReceiptAndTicket(order.id)
             }
@@ -529,7 +526,7 @@ class NewOrderViewModel @Inject constructor(
         qrPayment.value = QrPaymentState()
         selectedCategoryId.value = null
         searchQuery.value = ""
-        customerDisplayManager.update(CustomerDisplayState.Idle(session.value?.storeName.orEmpty(), session.value?.logoUrl))
+        customerDisplayManager.update(CustomerDisplayState.Idle)
     }
 
     private fun PaymentProvider.toApiName(): String = when (this) {

@@ -1,6 +1,7 @@
 package com.cyebrcina.pos.data.repository
 
 import com.cyebrcina.pos.data.remote.model.CreateOrderRequest
+import com.cyebrcina.pos.data.remote.model.CustomerDisplayConfig
 import com.cyebrcina.pos.data.remote.model.DeviceOrder
 import com.cyebrcina.pos.data.remote.model.KitchenTicketData
 import com.cyebrcina.pos.data.remote.model.PaymentLinkResponse
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 interface OrderRepository {
     val pendingOrders: StateFlow<List<DeviceOrder>>
     val receiptPrefs: StateFlow<ReceiptPrefs?>
+    val customerDisplay: StateFlow<CustomerDisplayConfig?>
 
     fun startPolling()
     fun stopPolling()

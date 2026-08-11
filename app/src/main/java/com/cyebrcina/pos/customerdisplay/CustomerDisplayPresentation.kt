@@ -26,6 +26,7 @@ class CustomerDisplayPresentation(
     private val outerContext: Context,
     display: Display,
     private val state: StateFlow<CustomerDisplayState>,
+    private val branding: StateFlow<CustomerDisplayBranding>,
 ) : Presentation(outerContext, display) {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,8 +47,9 @@ class CustomerDisplayPresentation(
             ComposeView(context).apply {
                 setContent {
                     val currentState by state.collectAsState()
+                    val currentBranding by branding.collectAsState()
                     PosNovaTheme {
-                        CustomerDisplayScreen(state = currentState)
+                        CustomerDisplayScreen(state = currentState, branding = currentBranding)
                     }
                 }
             },

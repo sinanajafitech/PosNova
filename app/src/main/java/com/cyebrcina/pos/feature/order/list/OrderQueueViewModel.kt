@@ -54,7 +54,7 @@ class OrderQueueViewModel @Inject constructor(
 
         authRepository.session.onEach { session ->
             if (session != null) {
-                customerDisplayManager.update(CustomerDisplayState.Idle(session.storeName, session.logoUrl))
+                customerDisplayManager.update(CustomerDisplayState.Idle)
             }
         }.launchIn(viewModelScope)
 
@@ -71,11 +71,9 @@ class OrderQueueViewModel @Inject constructor(
 
     private fun pulseNewOrder(orderNumber: String) {
         viewModelScope.launch {
-            val session = uiState.value.session
-            customerDisplayManager.update(CustomerDisplayState.NewOrderReceived(orderNumber, session?.storeName.orEmpty(), session?.logoUrl))
+            customerDisplayManager.update(CustomerDisplayState.NewOrderReceived(orderNumber))
             delay(6000)
-            val current = uiState.value.session
-            customerDisplayManager.update(CustomerDisplayState.Idle(current?.storeName.orEmpty(), current?.logoUrl))
+            customerDisplayManager.update(CustomerDisplayState.Idle)
         }
     }
 

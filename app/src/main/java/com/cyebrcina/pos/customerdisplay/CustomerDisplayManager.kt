@@ -5,11 +5,19 @@ import android.hardware.display.DisplayManager
 import android.os.Handler
 import android.os.Looper
 import android.view.Display
+import com.cyebrcina.pos.data.repository.AuthRepository
+import com.cyebrcina.pos.data.repository.OrderRepository
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 
 /**
  * Detects the Imin D4's second, customer-facing display and shows a [CustomerDisplayPresentation]
@@ -19,10 +27,28 @@ import kotlinx.coroutines.flow.asStateFlow
  * devices/emulators: if no secondary display is present, [start] is a no-op.
  */
 @Singleton
-class CustomerDisplayManager @Inject constructor() {
+class CustomerDisplayManager @Inject constructor(
+    authRepository: AuthRepository,
+    orderRepository: OrderRepository,
+) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    private val _state = MutableStateFlow<CustomerDisplayState>(CustomerDisplayState.Idle(storeName = "", logoUrl = null))
+    private val _state = MutableStateFlow<CustomerDisplayState>(CustomerDisplayState.Idle)
     val state: StateFlow<CustomerDisplayState> = _state.asStateFlow()
+
+    /** Store-wide branding, independent of [state] — see [CustomerDisplayBranding]. */
+    val branding: StateFlow<CustomerDisplayBranding> = combine(
+        authRepository.session,
+        orderRepository.customerDisplay,
+    ) { session, config ->
+        CustomerDisplayBranding(
+            storeName = session?.storeName.orEmpty(),
+            logoUrl = session?.logoUrl,
+            backgroundUrl = config?.backgroundUrl,
+            backgroundOpacity = config?.backgroundOpacity ?: 100,
+            idlePromoVideoUrl = config?.idlePromoVideoUrl,
+        )
+    }.stateIn(scope, SharingStarted.Eagerly, CustomerDisplayBranding())
 
     private var displayManager: DisplayManager? = null
     private var presentation: CustomerDisplayPresentation? = null
@@ -62,7 +88,7 @@ class CustomerDisplayManager @Inject constructor() {
         val context = hostContext ?: return
         val manager = displayManager ?: return
         val secondary = manager.displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY } ?: return
-        presentation = CustomerDisplayPresentation(context, secondary, state).also {
+        presentation = CustomerDisplayPresentation(context, secondary, state, branding).also {
             runCatching { it.show() }
         }
     }
