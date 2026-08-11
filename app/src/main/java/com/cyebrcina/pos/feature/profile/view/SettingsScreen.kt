@@ -9,22 +9,33 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cyebrcina.pos.core.components.AppCard
@@ -35,6 +46,8 @@ import com.cyebrcina.pos.core.components.StatusBadge
 import com.cyebrcina.pos.core.theme.PosColors
 import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
+import com.cyebrcina.pos.data.local.KitchenPrinterSettings
+import com.cyebrcina.pos.data.remote.model.ReceiptPrefs
 import com.cyebrcina.pos.printer.model.DiscoveredPrinter
 import com.cyebrcina.pos.printer.model.PrinterConnection
 import com.cyebrcina.pos.printer.model.PrinterStatus
@@ -47,7 +60,9 @@ fun SettingsScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { PosTopBar(title = "Settings") }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(Spacing.sm)) {
+        Column(
+            Modifier.fillMaxSize().padding(padding).padding(Spacing.sm).verticalScroll(rememberScrollState()),
+        ) {
             state.session?.let { session ->
                 AppCard(modifier = Modifier.fillMaxWidth()) {
                     Text(session.storeName.ifBlank { "Fire Hut Pizza & Wraps" }, style = PosTextStyles.h6, color = PosColors.Neutral12)
@@ -123,7 +138,21 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(Spacing.lg))
+            KitchenPrinterSection(
+                settings = state.kitchenPrinter,
+                isTestPrinting = state.isTestPrintingKitchen,
+                testResult = state.kitchenTestResult,
+                onSave = viewModel::setKitchenPrinter,
+                onTestPrint = viewModel::testKitchenPrint,
+            )
+
+            state.receiptPrefs?.let { prefs ->
+                Spacer(Modifier.height(Spacing.lg))
+                ReceiptSettingsSection(prefs)
+            }
+
+            Spacer(Modifier.height(Spacing.lg))
             SecondaryButton(
                 text = "Log Out",
                 onClick = { viewModel.logout(); onLoggedOut() },
@@ -143,6 +172,7 @@ private fun PrinterItem(printer: DiscoveredPrinter, onClick: () -> Unit) {
             imageVector = when (printer.connection) {
                 is PrinterConnection.Bluetooth -> Icons.Default.Bluetooth
                 is PrinterConnection.Usb -> Icons.Default.Usb
+                is PrinterConnection.Network -> Icons.Default.Wifi
                 PrinterConnection.BuiltIn -> Icons.Default.Print
             },
             contentDescription = null,
@@ -154,6 +184,7 @@ private fun PrinterItem(printer: DiscoveredPrinter, onClick: () -> Unit) {
             val detail = when (val conn = printer.connection) {
                 is PrinterConnection.Bluetooth -> conn.address
                 is PrinterConnection.Usb -> "USB Device ID: ${conn.deviceId}"
+                is PrinterConnection.Network -> "${conn.host}:${conn.port}"
                 PrinterConnection.BuiltIn -> "Internal Terminal Printer"
             }
             Text(detail, style = PosTextStyles.bodyXSmallRegular, color = PosColors.Neutral7)
@@ -172,4 +203,127 @@ private fun PrinterStatusBadge(status: PrinterStatus) {
         PrinterStatus.UNKNOWN -> "Unknown" to BadgeTone.NEUTRAL
     }
     StatusBadge(text = label, tone = tone)
+}
+
+/**
+ * A separate, network-only printer for kitchen tickets — a kitchen physically apart from the
+ * till/counter (the main [PrinterService] above) can have its own printer, so a ticket doesn't
+ * depend on someone carrying it over. Host/port are entered manually since there's no reliable
+ * network-printer discovery to scan for, unlike Bluetooth pairing or USB.
+ */
+@Composable
+private fun KitchenPrinterSection(
+    settings: KitchenPrinterSettings,
+    isTestPrinting: Boolean,
+    testResult: String?,
+    onSave: (KitchenPrinterSettings) -> Unit,
+    onTestPrint: () -> Unit,
+) {
+    var enabled by remember(settings.enabled) { mutableStateOf(settings.enabled) }
+    var host by remember(settings.host) { mutableStateOf(settings.host) }
+    var port by remember(settings.port) { mutableStateOf(settings.port.toString()) }
+
+    Text("Kitchen Printer", style = PosTextStyles.h6, color = PosColors.Neutral12)
+    Spacer(Modifier.height(Spacing.xxs))
+    AppCard(modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Send kitchen tickets here", style = PosTextStyles.bodyMediumSemibold, color = PosColors.Neutral12)
+                Text(
+                    "Instead of the main printer above — for a kitchen in a different room from the till",
+                    style = PosTextStyles.bodyXSmallRegular,
+                    color = PosColors.Neutral7,
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = { checked ->
+                    enabled = checked
+                    onSave(KitchenPrinterSettings(checked, settings.name, host, port.toIntOrNull() ?: settings.port))
+                },
+                colors = SwitchDefaults.colors(checkedTrackColor = PosColors.Primary500),
+            )
+        }
+
+        if (enabled) {
+            Spacer(Modifier.height(Spacing.sm))
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                OutlinedTextField(
+                    value = host,
+                    onValueChange = { host = it },
+                    label = { Text("Printer IP") },
+                    placeholder = { Text("192.168.1.50") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = port,
+                    onValueChange = { port = it.filter(Char::isDigit) },
+                    label = { Text("Port") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(96.dp),
+                )
+            }
+            Spacer(Modifier.height(Spacing.xs))
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                SecondaryButton(
+                    text = "Save",
+                    onClick = { onSave(KitchenPrinterSettings(enabled, settings.name, host, port.toIntOrNull() ?: settings.port)) },
+                    modifier = Modifier.weight(1f),
+                )
+                SecondaryButton(
+                    text = "Test Print",
+                    onClick = onTestPrint,
+                    loading = isTestPrinting,
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = { Icon(Icons.Filled.Print, contentDescription = null) },
+                )
+            }
+            testResult?.let { message ->
+                Spacer(Modifier.height(Spacing.xxs))
+                Text(message, style = PosTextStyles.bodyXSmallMedium, color = PosColors.Neutral7)
+            }
+        }
+    }
+}
+
+/**
+ * Read-only — these font sizes and which sections print are set from Admin
+ * (Settings → Devices/Receipts on the back office), not editable per-till. Shown here so a
+ * cashier troubleshooting an odd-looking receipt can see what's actually configured without
+ * needing back-office access.
+ */
+@Composable
+private fun ReceiptSettingsSection(prefs: ReceiptPrefs) {
+    Text("Receipt Settings (from Admin)", style = PosTextStyles.h6, color = PosColors.Neutral12)
+    Spacer(Modifier.height(Spacing.xxs))
+    AppCard(modifier = Modifier.fillMaxWidth()) {
+        Text("Font sizes", style = PosTextStyles.bodyXSmallMedium, color = PosColors.Neutral7)
+        Spacer(Modifier.height(Spacing.xxxs))
+        PrefRow("Header", "${prefs.headerFontSize}px")
+        PrefRow("Order box", "${prefs.orderBoxFontSize}px")
+        PrefRow("Section title", "${prefs.sectionTitleFontSize}px")
+        PrefRow("Address", "${prefs.addressFontSize}px")
+        PrefRow("Item", "${prefs.itemFontSize}px")
+        PrefRow("Footer", "${prefs.footerFontSize}px")
+
+        Spacer(Modifier.height(Spacing.sm))
+        Text("Sections shown", style = PosTextStyles.bodyXSmallMedium, color = PosColors.Neutral7)
+        Spacer(Modifier.height(Spacing.xxxs))
+        PrefRow("Customer name", if (prefs.showCustomerName) "Shown" else "Hidden")
+        PrefRow("Phone", if (prefs.showPhone) "Shown" else "Hidden")
+        PrefRow("Delivery address", if (prefs.showDeliveryAddress) "Shown" else "Hidden")
+        PrefRow("Payment label", if (prefs.showPaymentLabel) "Shown" else "Hidden")
+        PrefRow("Price breakdown", if (prefs.showPriceBreakdown) "Shown" else "Hidden")
+        PrefRow("Thank-you footer", if (prefs.showThankYouFooter) "Shown" else "Hidden")
+    }
+}
+
+@Composable
+private fun PrefRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = PosTextStyles.bodySmallRegular, color = PosColors.Neutral12)
+        Text(value, style = PosTextStyles.bodySmallMedium, color = PosColors.Neutral7)
+    }
 }

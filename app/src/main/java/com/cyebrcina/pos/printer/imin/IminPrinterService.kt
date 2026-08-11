@@ -17,9 +17,12 @@ import android.hardware.usb.UsbManager
 import android.os.Build
 import android.util.Log
 import com.cyebrcina.pos.printer.PrinterService
+import com.cyebrcina.pos.printer.escpos.EscPosEncoder
 import com.cyebrcina.pos.printer.model.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.OutputStream
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -55,6 +58,8 @@ class IminPrinterService @Inject constructor(
 
     private var usbConnection: UsbDeviceConnection? = null
     private var usbEndpoint: UsbEndpoint? = null
+
+    private var networkSocket: Socket? = null
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
@@ -132,6 +137,21 @@ class IminPrinterService @Inject constructor(
             is PrinterConnection.BuiltIn -> builtInPrinter.connect().also {
                 _status.value = if (it.isSuccess) PrinterStatus.READY else PrinterStatus.ERROR
             }
+            is PrinterConnection.Network -> connectNetwork(conn.host, conn.port)
+        }
+    }
+
+    private suspend fun connectNetwork(host: String, port: Int): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            networkSocket?.close()
+            val socket = Socket()
+            socket.connect(InetSocketAddress(host, port), 5000)
+            networkSocket = socket
+            _status.value = PrinterStatus.READY
+            Unit
+        }.onFailure {
+            Log.e(TAG, "Network connect to $host:$port failed", it)
+            _status.value = PrinterStatus.ERROR
         }
     }
 
@@ -217,7 +237,7 @@ class IminPrinterService @Inject constructor(
 
         return withContext(Dispatchers.IO) {
             runCatching {
-                val bytes = generateEscPosBytes(document)
+                val bytes = EscPosEncoder.encode(document, paperSize)
                 when (val connection = printer.connection) {
                     is PrinterConnection.Bluetooth -> {
                         val socket = bluetoothSocket ?: throw Exception("Not connected")
@@ -229,6 +249,11 @@ class IminPrinterService @Inject constructor(
                         val ep = usbEndpoint ?: throw Exception("USB endpoint null")
                         conn.bulkTransfer(ep, bytes, bytes.size, 5000)
                     }
+                    is PrinterConnection.Network -> {
+                        val socket = networkSocket ?: throw Exception("Not connected")
+                        socket.getOutputStream().write(bytes)
+                        socket.getOutputStream().flush()
+                    }
                     is PrinterConnection.BuiltIn -> error("unreachable — handled above")
                 }
                 Result.success(Unit)
@@ -239,53 +264,6 @@ class IminPrinterService @Inject constructor(
         }
     }
 
-    /**
-     * ESC/POS thermal printers use a single-byte codepage, not UTF-8 — a raw `String.toByteArray()`
-     * (UTF-8) encodes "£" as two bytes (0xC2 0xA3) that don't map to anything in the printer's
-     * codepage, so it prints garbage instead of the currency symbol. CP437 (IBM437, selected below
-     * via `ESC t 0`) is the ESC/POS standard default codepage and maps "£" to the single byte 0x9C.
-     */
-    private val escPosCharset = charset("Cp437")
-
-    private fun generateEscPosBytes(document: PrintDocument): ByteArray {
-        val out = java.io.ByteArrayOutputStream()
-        out.write(byteArrayOf(0x1B, 0x40)) // Init
-        out.write(byteArrayOf(0x1B, 0x74, 0x00)) // Select character code table: PC437 (USA, Standard Europe)
-        document.forEach { command ->
-            when (command) {
-                is PrintCommand.Text -> {
-                    val align = when (command.align) {
-                        PrintAlign.LEFT -> 0
-                        PrintAlign.CENTER -> 1
-                        PrintAlign.RIGHT -> 2
-                    }
-                    out.write(byteArrayOf(0x1B, 0x61, align.toByte()))
-                    out.write(byteArrayOf(0x1B, 0x45, if (command.bold) 1 else 0))
-                    val size = when (command.size) {
-                        PrintTextSize.SMALL -> 0x00
-                        PrintTextSize.NORMAL -> 0x00
-                        PrintTextSize.LARGE -> 0x11
-                        PrintTextSize.XLARGE -> 0x22
-                    }
-                    out.write(byteArrayOf(0x1D, 0x21, size.toByte()))
-                    out.write((command.text + "\n").toByteArray(escPosCharset))
-                }
-                is PrintCommand.Row -> {
-                    out.write(byteArrayOf(0x1B, 0x61, 0))
-                    val rightWidth = 12
-                    val leftWidth = paperSize.charsPerLine - rightWidth
-                    val line = command.left.padEnd(leftWidth) + command.right.padStart(rightWidth) + "\n"
-                    out.write(line.toByteArray(escPosCharset))
-                }
-                is PrintCommand.Divider -> out.write(("-".repeat(paperSize.charsPerLine) + "\n").toByteArray())
-                is PrintCommand.FeedLines -> repeat(command.lines) { out.write("\n".toByteArray()) }
-                PrintCommand.Cut -> out.write(byteArrayOf(0x1D, 0x56, 0x42, 0x00))
-                else -> {}
-            }
-        }
-        return out.toByteArray()
-    }
-
     override suspend fun openCashDrawer(): Result<Unit> {
         val printer = selectedPrinter ?: return Result.failure(IllegalStateException("No printer selected"))
 
@@ -294,7 +272,7 @@ class IminPrinterService @Inject constructor(
         }
 
         return withContext(Dispatchers.IO) {
-            val kickCommand = byteArrayOf(0x1B, 0x70, 0x00, 0x19, 0xFA.toByte())
+            val kickCommand = EscPosEncoder.cashDrawerKick
             runCatching {
                 when (val connection = printer.connection) {
                     is PrinterConnection.Bluetooth -> {
@@ -303,6 +281,10 @@ class IminPrinterService @Inject constructor(
                     }
                     is PrinterConnection.Usb -> {
                         usbConnection?.bulkTransfer(usbEndpoint, kickCommand, kickCommand.size, 1000)
+                    }
+                    is PrinterConnection.Network -> {
+                        networkSocket?.getOutputStream()?.write(kickCommand)
+                        networkSocket?.getOutputStream()?.flush()
                     }
                     is PrinterConnection.BuiltIn -> error("unreachable — handled above")
                 }

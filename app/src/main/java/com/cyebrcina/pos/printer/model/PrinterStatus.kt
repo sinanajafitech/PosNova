@@ -28,6 +28,12 @@ sealed interface PrintCommand {
     /** Two-column row — e.g. an item name on the left, its price on the right. */
     data class Row(val left: String, val right: String, val bold: Boolean = false) : PrintCommand
 
+    /** A full-width, two-column banner meant to stand out — e.g. order #/customer name. Inverted
+     * (light text on a dark background) on printers that support it — see
+     * [com.cyebrcina.pos.printer.escpos.EscPosEncoder]; falls back to bold + the largest text
+     * size where true inversion isn't a verified-available primitive (built-in Imin printer). */
+    data class HighlightBox(val left: String, val right: String) : PrintCommand
+
     data object Divider : PrintCommand
 
     data class QrCode(val content: String, val sizeDp: Int = 160) : PrintCommand

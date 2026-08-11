@@ -88,6 +88,21 @@ class IminBuiltInPrinter @Inject constructor(
                     val leftWidth = paperSize.charsPerLine - rightWidth
                     printText(PrintCommand.Text(command.left.padEnd(leftWidth) + command.right.padStart(rightWidth), bold = command.bold))
                 }
+                is PrintCommand.HighlightBox -> {
+                    val rightWidth = 8
+                    val leftWidth = paperSize.charsPerLine - rightWidth
+                    // No verified "inverse/reverse print" primitive in PrinterHelper's public API
+                    // (unlike GS B on ESC/POS — see EscPosEncoder) — approximated with bold + the
+                    // largest size step rather than guessing at an undocumented call that could
+                    // fail silently or crash on real hardware.
+                    printText(
+                        PrintCommand.Text(
+                            command.left.padEnd(leftWidth) + command.right.padStart(rightWidth),
+                            size = PrintTextSize.XLARGE,
+                            bold = true,
+                        ),
+                    )
+                }
                 PrintCommand.Divider -> printText(PrintCommand.Text("-".repeat(paperSize.charsPerLine)))
                 is PrintCommand.QrCode -> printQrCode(command)
                 is PrintCommand.FeedLines -> {

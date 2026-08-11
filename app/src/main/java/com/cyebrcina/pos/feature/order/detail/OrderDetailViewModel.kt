@@ -15,6 +15,7 @@ import com.cyebrcina.pos.printer.PrinterService
 import com.cyebrcina.pos.printer.ReceiptBuilder
 import com.cyebrcina.pos.printer.model.PrintJobState
 import com.cyebrcina.pos.printer.model.toPrinterPaperSize
+import com.cyebrcina.pos.printer.network.KitchenPrinterDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -66,6 +67,7 @@ class OrderDetailViewModel @Inject constructor(
     private val orderRepository: OrderRepository,
     private val printerService: PrinterService,
     private val paymentTerminalService: PaymentTerminalService,
+    private val kitchenPrinterDispatcher: KitchenPrinterDispatcher,
 ) : ViewModel() {
 
     private val orderId: String = checkNotNull(savedStateHandle["orderId"])
@@ -198,8 +200,19 @@ class OrderDetailViewModel @Inject constructor(
 
         orderRepository.ticketData(orderId)
             .onSuccess { data ->
-                printerService.setPaperSize(data.prefs?.paperSize.toPrinterPaperSize())
-                printerService.print(ReceiptBuilder.buildKitchenTicket(data)).onFailure { warnings += "Ticket: ${it.message}" }
+                val paperSize = data.prefs?.paperSize.toPrinterPaperSize()
+                val ticket = ReceiptBuilder.buildKitchenTicket(data)
+                // A dedicated kitchen printer (configured in Settings) takes priority over the
+                // main receipt printer — a kitchen physically apart from the till shouldn't need
+                // someone to carry a paper ticket over from the counter.
+                when (kitchenPrinterDispatcher.printIfConfigured(ticket, paperSize)) {
+                    null -> {
+                        printerService.setPaperSize(paperSize)
+                        printerService.print(ticket).onFailure { warnings += "Ticket: ${it.message}" }
+                    }
+                    false -> warnings += "Ticket: couldn't reach the kitchen printer"
+                    true -> Unit
+                }
             }
             .onFailure { warnings += "Couldn't fetch ticket data: ${it.message}" }
 

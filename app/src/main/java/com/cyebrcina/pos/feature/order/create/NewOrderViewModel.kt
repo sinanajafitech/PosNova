@@ -26,6 +26,7 @@ import com.cyebrcina.pos.payment.model.TerminalStatus
 import com.cyebrcina.pos.printer.PrinterService
 import com.cyebrcina.pos.printer.ReceiptBuilder
 import com.cyebrcina.pos.printer.model.toPrinterPaperSize
+import com.cyebrcina.pos.printer.network.KitchenPrinterDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -105,6 +106,7 @@ class NewOrderViewModel @Inject constructor(
     private val customerDisplayManager: CustomerDisplayManager,
     private val heldOrdersStore: HeldOrdersStore,
     private val entryCoordinator: NewOrderEntryCoordinator,
+    private val kitchenPrinterDispatcher: KitchenPrinterDispatcher,
 ) : ViewModel() {
 
     private val session = MutableStateFlow<DeviceSession?>(null)
@@ -464,8 +466,16 @@ class NewOrderViewModel @Inject constructor(
             .onFailure { warnings += "Couldn't fetch receipt data: ${it.message}" }
         orderRepository.ticketData(orderId)
             .onSuccess { data ->
-                printerService.setPaperSize(data.prefs?.paperSize.toPrinterPaperSize())
-                printerService.print(ReceiptBuilder.buildKitchenTicket(data)).onFailure { warnings += "Ticket: ${it.message}" }
+                val paperSize = data.prefs?.paperSize.toPrinterPaperSize()
+                val ticket = ReceiptBuilder.buildKitchenTicket(data)
+                when (kitchenPrinterDispatcher.printIfConfigured(ticket, paperSize)) {
+                    null -> {
+                        printerService.setPaperSize(paperSize)
+                        printerService.print(ticket).onFailure { warnings += "Ticket: ${it.message}" }
+                    }
+                    false -> warnings += "Ticket: couldn't reach the kitchen printer"
+                    true -> Unit
+                }
             }
             .onFailure { warnings += "Couldn't fetch ticket data: ${it.message}" }
         printWarning.value = warnings.joinToString("; ").ifBlank { null }

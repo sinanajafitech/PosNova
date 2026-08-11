@@ -19,22 +19,32 @@ import java.time.Instant
  */
 object ReceiptBuilder {
 
+    /**
+     * Laid out to match the reference Uber Eats-style receipt: big store name, a bold
+     * highlight box for order #/customer (the one thing a cashier scans for first), small
+     * gray-weight metadata underneath, then the order type as its own heading before the items.
+     */
     fun buildCustomerReceipt(data: ReceiptData): PrintDocument = buildList {
         val prefs = data.prefs
         add(PrintCommand.Text(data.storeName, align = PrintAlign.CENTER, size = fontSizeOf(prefs?.headerFontSize ?: 24), bold = true))
         add(PrintCommand.FeedLines())
-        add(PrintCommand.Row("Order", data.number, bold = true))
-        data.createdAt.toInstantOrNull()?.let { add(PrintCommand.Row("Date", it.asDateTime())) }
-        add(PrintCommand.Row("Type", data.typeLabel))
-        if (prefs?.showCustomerName != false) add(PrintCommand.Row("Customer", data.customerName))
-        if (prefs?.showPhone != false) data.customerPhone?.let { add(PrintCommand.Row("Phone", it)) }
+
+        add(PrintCommand.HighlightBox(data.number, if (prefs?.showCustomerName != false) data.customerName else ""))
+        add(PrintCommand.FeedLines())
+
+        data.createdAt.toInstantOrNull()?.let { add(PrintCommand.Text("Placed at ${it.asDateTime()}", size = PrintTextSize.SMALL)) }
+        if (prefs?.showPhone != false) data.customerPhone?.let { add(PrintCommand.Text("Phone: $it", size = PrintTextSize.SMALL)) }
+        add(PrintCommand.FeedLines())
+
+        add(PrintCommand.Text(data.typeLabel.uppercase(), align = PrintAlign.CENTER, bold = true, size = fontSizeOf(prefs?.sectionTitleFontSize ?: 14)))
+        add(PrintCommand.Divider)
+
         if (prefs?.showDeliveryAddress != false) {
             data.deliveryAddress?.let { address ->
-                add(PrintCommand.Text("Deliver to:", size = fontSizeOf(prefs?.sectionTitleFontSize ?: 14), bold = true))
                 add(PrintCommand.Text(address, size = fontSizeOf(prefs?.addressFontSize ?: 12)))
+                add(PrintCommand.Divider)
             }
         }
-        add(PrintCommand.Divider)
 
         data.items.forEach { item ->
             add(PrintCommand.Text("${item.qty}x ${item.label}", size = fontSizeOf(prefs?.itemFontSize ?: 14), bold = true))
@@ -60,7 +70,14 @@ object ReceiptBuilder {
 
         add(PrintCommand.FeedLines())
         if (prefs?.showThankYouFooter != false) {
-            add(PrintCommand.Text("Thank you for your order!", align = PrintAlign.CENTER, bold = true, size = fontSizeOf(prefs?.footerFontSize ?: 12)))
+            add(
+                PrintCommand.Text(
+                    "Thank you for ordering from ${data.storeName}",
+                    align = PrintAlign.CENTER,
+                    bold = true,
+                    size = fontSizeOf(prefs?.footerFontSize ?: 12),
+                ),
+            )
         }
         add(PrintCommand.FeedLines(2))
         add(PrintCommand.Cut)

@@ -8,6 +8,7 @@ import com.cyebrcina.pos.printer.model.PrintCommand
 import com.cyebrcina.pos.printer.model.PrintDocument
 import com.cyebrcina.pos.printer.model.PrinterPaperSize
 import com.cyebrcina.pos.printer.model.PrinterStatus
+import com.cyebrcina.pos.printer.network.DEFAULT_NETWORK_PRINTER_PORT
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.delay
@@ -34,6 +35,7 @@ class MockPrinterService @Inject constructor() : PrinterService {
         _discoveredPrinters.value = listOf(
             DiscoveredPrinter("Mock Bluetooth Printer", PrinterConnection.Bluetooth("00:11:22:33:44:55")),
             DiscoveredPrinter("Mock USB Printer", PrinterConnection.Usb(1234)),
+            DiscoveredPrinter("Mock Network Printer", PrinterConnection.Network("192.168.1.50", DEFAULT_NETWORK_PRINTER_PORT)),
             DiscoveredPrinter("Built-in Printer", PrinterConnection.BuiltIn)
         )
     }
@@ -80,6 +82,7 @@ class MockPrinterService @Inject constructor() : PrinterService {
             when (command) {
                 is PrintCommand.Text -> appendLine((if (command.bold) "**" else "") + command.text + (if (command.bold) "**" else ""))
                 is PrintCommand.Row -> appendLine("${command.left.padEnd(leftWidth)}${command.right.padStart(rightWidth)}")
+            is PrintCommand.HighlightBox -> appendLine("██ ${command.left.padEnd(leftWidth - 6)}${command.right.padStart(rightWidth)} ██")
                 is PrintCommand.Divider -> appendLine("-".repeat(paperSize.charsPerLine))
                 is PrintCommand.QrCode -> appendLine("[QR: ${command.content}]")
                 is PrintCommand.FeedLines -> repeat(command.lines) { appendLine() }
