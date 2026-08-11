@@ -55,7 +55,10 @@ fun MainGraphHost(windowSizeClass: WindowSizeClass, onLoggedOut: () -> Unit) {
     ) { contentModifier ->
         NavHost(navController = navController, startDestination = MainRoutes.ORDER_QUEUE, modifier = contentModifier) {
             composable(MainRoutes.ORDER_QUEUE) {
-                OrderQueueScreen(onOpenOrder = { orderId -> navController.navigate(MainRoutes.orderDetail(orderId)) })
+                OrderQueueScreen(
+                    onOpenOrder = { orderId -> navController.navigate(MainRoutes.orderDetail(orderId)) },
+                    onAddNewOrder = { navController.navigate(MainRoutes.NEW_ORDER_GRAPH) },
+                )
             }
             composable(
                 route = MainRoutes.ORDER_DETAIL,

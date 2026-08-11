@@ -90,4 +90,10 @@ object PosColors {
     val TextSecondary = Color(0xFF6F6F6F)
     val Danger = Color(0xFFDF1C41)
     val SuccessAccent = Color(0xFF40C4AA)
+
+    // Report screen stat-card icon accents + trend-chip tones (node 12111:94291).
+    val Amber = Color(0xFFFFBE4C)
+    val Cyan = Color(0xFF33CFFF)
+    val TrendPositiveBg = Color(0xFFEFFEFA)
+    val TrendNegativeBg = Color(0xFFFFF0F3)
 }
