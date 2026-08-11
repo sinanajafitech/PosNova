@@ -14,6 +14,7 @@ import com.cyebrcina.pos.payment.model.TerminalStatus
 import com.cyebrcina.pos.printer.PrinterService
 import com.cyebrcina.pos.printer.ReceiptBuilder
 import com.cyebrcina.pos.printer.model.PrintJobState
+import com.cyebrcina.pos.printer.model.toPrintMode
 import com.cyebrcina.pos.printer.model.toPrinterPaperSize
 import com.cyebrcina.pos.printer.network.KitchenPrinterDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -194,6 +195,7 @@ class OrderDetailViewModel @Inject constructor(
         orderRepository.receiptData(orderId)
             .onSuccess { data ->
                 printerService.setPaperSize(data.prefs?.paperSize.toPrinterPaperSize())
+                printerService.setPrintMode(data.prefs?.printMode.toPrintMode())
                 printerService.print(ReceiptBuilder.buildCustomerReceipt(data)).onFailure { warnings += "Receipt: ${it.message}" }
             }
             .onFailure { warnings += "Couldn't fetch receipt data: ${it.message}" }
@@ -201,13 +203,15 @@ class OrderDetailViewModel @Inject constructor(
         orderRepository.ticketData(orderId)
             .onSuccess { data ->
                 val paperSize = data.prefs?.paperSize.toPrinterPaperSize()
+                val printMode = data.prefs?.printMode.toPrintMode()
                 val ticket = ReceiptBuilder.buildKitchenTicket(data)
                 // A dedicated kitchen printer (configured in Settings) takes priority over the
                 // main receipt printer — a kitchen physically apart from the till shouldn't need
                 // someone to carry a paper ticket over from the counter.
-                when (kitchenPrinterDispatcher.printIfConfigured(ticket, paperSize)) {
+                when (kitchenPrinterDispatcher.printIfConfigured(ticket, paperSize, printMode)) {
                     null -> {
                         printerService.setPaperSize(paperSize)
+                        printerService.setPrintMode(printMode)
                         printerService.print(ticket).onFailure { warnings += "Ticket: ${it.message}" }
                     }
                     false -> warnings += "Ticket: couldn't reach the kitchen printer"

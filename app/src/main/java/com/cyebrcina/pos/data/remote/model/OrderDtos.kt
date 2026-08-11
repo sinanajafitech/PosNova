@@ -56,6 +56,8 @@ data class ReceiptPrefs(
     val footerFontSize: Int = 12,
     /** "MM_58" or "MM_80" — parse via [com.cyebrcina.pos.printer.model.PrinterPaperSize]. */
     val paperSize: String? = null,
+    /** "ESC" or "POS" — parse via [com.cyebrcina.pos.printer.model.PrintMode]. */
+    val printMode: String? = null,
 )
 
 /** The D4's secondary customer-facing screen — background image behind the idle/order content,
@@ -69,6 +71,20 @@ data class CustomerDisplayConfig(
     val idlePromoVideoUrl: String? = null,
 )
 
+/** Which card terminal provider every till uses, set centrally in Admin -> Settings -> Card
+ * Terminal instead of on the till itself. [provider] matches
+ * [com.cyebrcina.pos.payment.model.PaymentProvider]'s name exactly. Only ever carries
+ * client-safe credentials (a publishable/affiliate key, merchant/location id) — never a
+ * server-only secret. */
+@Serializable
+data class CardTerminalConfig(
+    val provider: String = "MOCK",
+    val apiKey: String? = null,
+    val merchantId: String? = null,
+    val locationId: String? = null,
+    val extra: String? = null,
+)
+
 @Serializable
 data class PendingOrdersResponse(
     val orders: List<DeviceOrder> = emptyList(),
@@ -78,6 +94,7 @@ data class PendingOrdersResponse(
     val receiptPrefs: ReceiptPrefs? = null,
     val notificationSoundUrl: String? = null,
     val customerDisplay: CustomerDisplayConfig? = null,
+    val cardTerminal: CardTerminalConfig? = null,
 )
 
 @Serializable

@@ -18,6 +18,8 @@ import android.os.Build
 import android.util.Log
 import com.cyebrcina.pos.printer.PrinterService
 import com.cyebrcina.pos.printer.escpos.EscPosEncoder
+import com.cyebrcina.pos.printer.escpos.EscPosRasterEncoder
+import com.cyebrcina.pos.printer.graphic.ReceiptBitmapRenderer
 import com.cyebrcina.pos.printer.model.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.OutputStream
@@ -216,10 +218,15 @@ class IminPrinterService @Inject constructor(
     }
 
     private var paperSize = PrinterPaperSize.MM_58
+    private var printMode = PrintMode.ESC
 
     override fun setPaperSize(paperSize: PrinterPaperSize) {
         this.paperSize = paperSize
         builtInPrinter.setPaperSize(paperSize)
+    }
+
+    override fun setPrintMode(printMode: PrintMode) {
+        this.printMode = printMode
     }
 
     override suspend fun print(document: PrintDocument): Result<Unit> {
@@ -232,12 +239,19 @@ class IminPrinterService @Inject constructor(
         }
 
         if (printer.connection is PrinterConnection.BuiltIn) {
+            // No verified bitmap-print primitive in PrinterHelper's public API (see
+            // HighlightBox's fallback above for the same limitation) — always ESC/text mode
+            // here regardless of the admin-set printMode.
             return builtInPrinter.print(document)
         }
 
         return withContext(Dispatchers.IO) {
             runCatching {
-                val bytes = EscPosEncoder.encode(document, paperSize)
+                val bytes = if (printMode == PrintMode.POS) {
+                    EscPosRasterEncoder.encode(ReceiptBitmapRenderer.render(document, paperSize))
+                } else {
+                    EscPosEncoder.encode(document, paperSize)
+                }
                 when (val connection = printer.connection) {
                     is PrinterConnection.Bluetooth -> {
                         val socket = bluetoothSocket ?: throw Exception("Not connected")

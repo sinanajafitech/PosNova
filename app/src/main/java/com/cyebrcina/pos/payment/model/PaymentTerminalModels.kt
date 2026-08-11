@@ -1,7 +1,7 @@
 package com.cyebrcina.pos.payment.model
 
-/** Which card-payment integration is active — selectable in Settings, persisted in
- * [com.cyebrcina.pos.data.local.TerminalSettingsStore], and resolved at runtime by
+/** Which card-payment integration is active — set centrally in Admin -> Settings -> Card
+ * Terminal (`CardTerminalConfig.provider`, not a till-local choice), and resolved at runtime by
  * [com.cyebrcina.pos.payment.SelectedPaymentTerminalService] via the
  * `Map<PaymentProvider, PaymentTerminalService>` bound in [com.cyebrcina.pos.di.PaymentModule]. */
 enum class PaymentProvider {

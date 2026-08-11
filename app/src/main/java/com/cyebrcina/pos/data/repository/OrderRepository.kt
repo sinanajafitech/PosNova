@@ -1,5 +1,6 @@
 package com.cyebrcina.pos.data.repository
 
+import com.cyebrcina.pos.data.remote.model.CardTerminalConfig
 import com.cyebrcina.pos.data.remote.model.CreateOrderRequest
 import com.cyebrcina.pos.data.remote.model.CustomerDisplayConfig
 import com.cyebrcina.pos.data.remote.model.DeviceOrder
@@ -21,6 +22,7 @@ interface OrderRepository {
     val pendingOrders: StateFlow<List<DeviceOrder>>
     val receiptPrefs: StateFlow<ReceiptPrefs?>
     val customerDisplay: StateFlow<CustomerDisplayConfig?>
+    val cardTerminal: StateFlow<CardTerminalConfig?>
 
     fun startPolling()
     fun stopPolling()

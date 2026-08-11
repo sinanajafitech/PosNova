@@ -6,6 +6,7 @@ import com.cyebrcina.pos.printer.model.DiscoveredPrinter
 import com.cyebrcina.pos.printer.model.PrinterConnection
 import com.cyebrcina.pos.printer.model.PrintCommand
 import com.cyebrcina.pos.printer.model.PrintDocument
+import com.cyebrcina.pos.printer.model.PrintMode
 import com.cyebrcina.pos.printer.model.PrinterPaperSize
 import com.cyebrcina.pos.printer.model.PrinterStatus
 import com.cyebrcina.pos.printer.network.DEFAULT_NETWORK_PRINTER_PORT
@@ -69,15 +70,20 @@ class MockPrinterService @Inject constructor() : PrinterService {
     }
 
     private var paperSize = PrinterPaperSize.MM_58
+    private var printMode = PrintMode.ESC
 
     override fun setPaperSize(paperSize: PrinterPaperSize) {
         this.paperSize = paperSize
     }
 
+    override fun setPrintMode(printMode: PrintMode) {
+        this.printMode = printMode
+    }
+
     private fun renderForLog(document: PrintDocument): String = buildString {
         val rightWidth = 12
         val leftWidth = paperSize.charsPerLine - rightWidth
-        appendLine("──────── MOCK PRINT JOB (${paperSize.name}) ────────")
+        appendLine("──────── MOCK PRINT JOB (${paperSize.name}, ${printMode.name} mode) ────────")
         document.forEach { command ->
             when (command) {
                 is PrintCommand.Text -> appendLine((if (command.bold) "**" else "") + command.text + (if (command.bold) "**" else ""))

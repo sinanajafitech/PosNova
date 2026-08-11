@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cyebrcina.pos.data.local.KitchenPrinterSettings
 import com.cyebrcina.pos.data.local.PrinterSettingsStore
-import com.cyebrcina.pos.data.local.TerminalSettingsStore
 import com.cyebrcina.pos.data.model.DeviceSession
 import com.cyebrcina.pos.data.remote.model.ReceiptPrefs
 import com.cyebrcina.pos.data.repository.AuthRepository
@@ -43,6 +42,7 @@ data class SettingsUiState(
     val isTestPrintingKitchen: Boolean = false,
     val kitchenTestResult: String? = null,
     val receiptPrefs: ReceiptPrefs? = null,
+    /** Set by Admin -> Settings -> Card Terminal — not changeable from the till itself. */
     val terminalProvider: PaymentProvider = PaymentProvider.MOCK,
     val terminalStatus: TerminalStatus = TerminalStatus.DISCONNECTED,
     val isConnectingTerminal: Boolean = false,
@@ -82,7 +82,6 @@ class SettingsViewModel @Inject constructor(
     private val printerSettingsStore: PrinterSettingsStore,
     private val kitchenPrinterDispatcher: KitchenPrinterDispatcher,
     private val paymentTerminalService: PaymentTerminalService,
-    private val terminalSettingsStore: TerminalSettingsStore,
 ) : ViewModel() {
 
     private val localFlags = MutableStateFlow(LocalFlags())
@@ -109,10 +108,11 @@ class SettingsViewModel @Inject constructor(
     }
 
     private val terminalState = combine(
-        terminalSettingsStore.selectedProvider,
+        orderRepository.cardTerminal,
         paymentTerminalService.status,
         printerSettingsStore.mainPrinter,
-    ) { provider, status, mainPrinter ->
+    ) { config, status, mainPrinter ->
+        val provider = PaymentProvider.entries.find { it.name == config?.provider } ?: PaymentProvider.MOCK
         TerminalState(provider, status, mainPrinter)
     }
 
@@ -189,14 +189,8 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Switches the active card terminal provider and immediately tries to connect to it. */
-    fun selectTerminalProvider(provider: PaymentProvider) {
-        viewModelScope.launch {
-            terminalSettingsStore.setSelectedProvider(provider)
-            connectTerminal()
-        }
-    }
-
+    /** Retries connecting to whichever provider Admin currently has selected — the till can't
+     * switch providers itself, only Admin -> Settings -> Card Terminal can. */
     fun connectTerminal() {
         viewModelScope.launch {
             localFlags.update { it.copy(isConnectingTerminal = true, terminalError = null) }

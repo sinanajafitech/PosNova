@@ -163,7 +163,6 @@ fun SettingsScreen(
                 status = state.terminalStatus,
                 isConnecting = state.isConnectingTerminal,
                 error = state.terminalError,
-                onSelectProvider = viewModel::selectTerminalProvider,
                 onConnect = viewModel::connectTerminal,
             )
 
@@ -373,11 +372,12 @@ private fun PaymentProvider.displayName(): String = when (this) {
 }
 
 /**
- * Provider picker as cards (matching [PrinterCard]'s style) plus live connection status. Exactly
- * one provider is active at a time — selecting one saves it and connects immediately. SumUp's
- * own checkout SDK handles Bluetooth reader pairing itself when a charge is started (there's no
- * separate pairing step to build here); the other providers are still "not configured yet"
- * scaffolds pending real SDK/API details — see CARD_PAYMENT_SETUP.md.
+ * Read-only — which provider is active is set from Admin -> Settings -> Card Terminal, not
+ * chosen on the till (an earlier on-device picker meant browsing this screen could silently
+ * switch it to an unconfigured provider mid-shift). "Connect" just retries connecting to
+ * whatever Admin currently has selected. SumUp's own checkout SDK handles Bluetooth reader
+ * pairing itself when a charge is started; the other real providers are still "not configured
+ * yet" scaffolds pending real SDK/API details — see CARD_PAYMENT_SETUP.md.
  */
 @Composable
 private fun CardTerminalSection(
@@ -385,25 +385,25 @@ private fun CardTerminalSection(
     status: TerminalStatus,
     isConnecting: Boolean,
     error: String?,
-    onSelectProvider: (PaymentProvider) -> Unit,
     onConnect: () -> Unit,
 ) {
     Text("Card Terminal", style = PosTextStyles.h6, color = PosColors.Neutral12)
     Spacer(Modifier.height(Spacing.xxs))
     AppCard(modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Connection", style = PosTextStyles.bodySmallRegular, color = PosColors.Neutral7)
-            TerminalStatusBadge(status)
-        }
-        Spacer(Modifier.height(Spacing.sm))
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            PaymentProvider.entries.forEach { provider ->
-                TerminalProviderCard(
-                    provider = provider,
-                    selected = provider == selectedProvider,
-                    onClick = { onSelectProvider(provider) },
-                )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(PosNovaShapes.medium)
+                .background(PosColors.Primary50)
+                .padding(Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.CreditCard, contentDescription = null, tint = PosColors.Primary500, modifier = Modifier.padding(end = Spacing.xs))
+            Column(Modifier.weight(1f)) {
+                Text(selectedProvider.displayName(), style = PosTextStyles.bodySmallMedium, color = PosColors.Neutral12)
+                Text("Set from Admin → Settings → Card Terminal", style = PosTextStyles.bodyXSmallRegular, color = PosColors.Neutral7)
             }
+            TerminalStatusBadge(status)
         }
         Spacer(Modifier.height(Spacing.sm))
         SecondaryButton(
@@ -415,35 +415,6 @@ private fun CardTerminalSection(
         error?.let { message ->
             Spacer(Modifier.height(Spacing.xxs))
             Text(message, style = PosTextStyles.bodyXSmallMedium, color = PosColors.Warning500)
-        }
-    }
-}
-
-@Composable
-private fun TerminalProviderCard(provider: PaymentProvider, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(PosNovaShapes.medium)
-            .background(if (selected) PosColors.Primary50 else PosColors.Neutral3)
-            .border(
-                width = if (selected) 1.5.dp else 1.dp,
-                color = if (selected) PosColors.Primary500 else PosColors.Neutral4,
-                shape = PosNovaShapes.medium,
-            )
-            .clickable(onClick = onClick)
-            .padding(Spacing.sm),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            Icons.Default.CreditCard,
-            contentDescription = null,
-            tint = if (selected) PosColors.Primary500 else PosColors.Neutral7,
-            modifier = Modifier.padding(end = Spacing.xs),
-        )
-        Text(provider.displayName(), style = PosTextStyles.bodySmallMedium, color = PosColors.Neutral12, modifier = Modifier.weight(1f))
-        if (selected) {
-            Icon(Icons.Default.CheckCircle, contentDescription = "Selected", tint = PosColors.Primary500)
         }
     }
 }

@@ -23,6 +23,7 @@ data class LoginResponse(
     val primaryColor: String,
     val logoUrl: String? = null,
     val customerDisplay: CustomerDisplayConfig? = null,
+    val cardTerminal: CardTerminalConfig? = null,
 )
 
 @Serializable

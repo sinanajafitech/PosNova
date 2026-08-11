@@ -2,7 +2,10 @@ package com.cyebrcina.pos.printer.network
 
 import com.cyebrcina.pos.data.local.PrinterSettingsStore
 import com.cyebrcina.pos.printer.escpos.EscPosEncoder
+import com.cyebrcina.pos.printer.escpos.EscPosRasterEncoder
+import com.cyebrcina.pos.printer.graphic.ReceiptBitmapRenderer
 import com.cyebrcina.pos.printer.model.PrintDocument
+import com.cyebrcina.pos.printer.model.PrintMode
 import com.cyebrcina.pos.printer.model.PrinterPaperSize
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,10 +26,18 @@ class KitchenPrinterDispatcher @Inject constructor(
      * @return `null` if no kitchen printer is configured (caller should fall back to the main
      * printer), otherwise whether the send to the kitchen printer succeeded.
      */
-    suspend fun printIfConfigured(document: PrintDocument, paperSize: PrinterPaperSize): Boolean? {
+    suspend fun printIfConfigured(
+        document: PrintDocument,
+        paperSize: PrinterPaperSize,
+        printMode: PrintMode = PrintMode.ESC,
+    ): Boolean? {
         val settings = settingsStore.kitchenPrinter.first()
         if (!settings.enabled || settings.host.isBlank()) return null
-        val bytes = EscPosEncoder.encode(document, paperSize)
+        val bytes = if (printMode == PrintMode.POS) {
+            EscPosRasterEncoder.encode(ReceiptBitmapRenderer.render(document, paperSize))
+        } else {
+            EscPosEncoder.encode(document, paperSize)
+        }
         return networkPrinterClient.send(settings.host, settings.port, bytes).isSuccess
     }
 }

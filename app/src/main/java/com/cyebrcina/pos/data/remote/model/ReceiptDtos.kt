@@ -49,6 +49,8 @@ data class KitchenTicketPrefs(
     val showNotes: Boolean = true,
     /** "MM_58" or "MM_80" — parse via [com.cyebrcina.pos.printer.model.PrinterPaperSize]. */
     val paperSize: String? = null,
+    /** "ESC" or "POS" — parse via [com.cyebrcina.pos.printer.model.PrintMode]. */
+    val printMode: String? = null,
 )
 
 @Serializable
