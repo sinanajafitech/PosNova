@@ -46,10 +46,10 @@ object NewOrderRoutes {
 
 /** The top-level sections shown in the adaptive nav rail / bottom bar. */
 enum class MainSection(val route: String, val label: String, val icon: ImageVector) {
-    QUEUE(MainRoutes.ORDER_QUEUE, "Orders", Icons.AutoMirrored.Filled.ReceiptLong),
+    QUEUE(MainRoutes.ORDER_QUEUE, "Dashboard", Icons.AutoMirrored.Filled.ReceiptLong),
     NEW_ORDER(MainRoutes.NEW_ORDER_GRAPH, "New Order", Icons.Filled.AddCircle),
     TABLES(MainRoutes.TABLES, "Tables", Icons.Filled.TableRestaurant),
-    HISTORY(MainRoutes.ORDER_HISTORY, "History", Icons.Filled.History),
+    HISTORY(MainRoutes.ORDER_HISTORY, "Transactions", Icons.Filled.History),
     MENU(MainRoutes.MENU, "Menu", Icons.Filled.RestaurantMenu),
     REPORT(MainRoutes.REPORT, "Report", Icons.Filled.QueryStats),
     SETTINGS(MainRoutes.SETTINGS, "Settings", Icons.Filled.Settings),
