@@ -24,6 +24,7 @@ import com.cyebrcina.pos.feature.order.history.OrderHistoryScreen
 import com.cyebrcina.pos.feature.order.list.OrderQueueScreen
 import com.cyebrcina.pos.feature.profile.view.SettingsScreen
 import com.cyebrcina.pos.feature.report.ReportScreen
+import com.cyebrcina.pos.feature.waitercall.WaiterCallOverlay
 import androidx.hilt.navigation.compose.hiltViewModel
 
 const val MAIN_GRAPH_ROUTE = "main_root"
@@ -41,6 +42,11 @@ fun MainGraphHost(windowSizeClass: WindowSizeClass, onLoggedOut: () -> Unit) {
     val currentRoute = backStackEntry?.destination?.route
     val currentSection = MainSection.entries.firstOrNull { section -> currentRoute?.startsWith(section.route) == true }
         ?: MainSection.QUEUE
+
+    // Mounted alongside MainScaffold (not inside its content slot) so it pops up over whichever
+    // tab staff are on, and survives tab switches since it's scoped to this composable's own
+    // lifetime rather than any one screen's.
+    WaiterCallOverlay()
 
     MainScaffold(
         windowSizeClass = windowSizeClass,

@@ -17,6 +17,7 @@ import com.cyebrcina.pos.data.remote.model.KitchenTicketData
 import com.cyebrcina.pos.data.remote.model.SetStoreStatusRequest
 import com.cyebrcina.pos.data.remote.model.SetStoreStatusResponse
 import com.cyebrcina.pos.data.remote.model.StoreStatusResponse
+import com.cyebrcina.pos.data.remote.model.TablesResponse
 import com.cyebrcina.pos.data.remote.model.ZReport
 import retrofit2.Response
 import retrofit2.http.Body
@@ -65,6 +66,10 @@ interface FireHutDeviceApi {
 
     @GET("api/device/z-report")
     suspend fun zReport(@Query("date") date: String? = null): Response<ZReport>
+
+    /** Real, live. Every active table's real occupancy/status, synced from Admin. */
+    @GET("api/device/tables")
+    suspend fun tables(): Response<TablesResponse>
 
     /**
      * NOT YET LIVE — see BACKEND_CARD_PAYMENT_SPEC.md. Records an at-till card charge (e.g. for

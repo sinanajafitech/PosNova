@@ -411,6 +411,24 @@ paths:
         "400": { description: Invalid date }
         "401": { $ref: '#/components/responses/Unauthorized' }
 
+  /api/device/tables:
+    get:
+      tags: [Device Tables]
+      summary: Every active table's real occupancy/status
+      description: >-
+        `status` is OCCUPIED whenever the table has any order that isn't
+        DELIVERED/CANCELLED, regardless of its stored manual status —
+        same rule Admin's dine-in floor-plan page uses, so the two never
+        disagree. Otherwise it's the manually-set AVAILABLE/RESERVED/
+        CLEANING/OUT_OF_SERVICE value.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TablesResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
   # ---------------------------------------------------------------------
   # SERVER-TO-SERVER (not called by the device itself)
   # ---------------------------------------------------------------------
@@ -450,6 +468,47 @@ paths:
                     description: false only means no Socket.IO instance was running — devices on the polling fallback still pick the order up within 15s
         "400": { description: Invalid request body }
         "401": { description: Missing/incorrect X-Broadcast-Secret }
+
+  /api/orders/waiter-call:
+    post:
+      tags: [Server-to-Server]
+      summary: A dine-in diner tapped "Call Waiter" on the customer-facing menu
+      security: []
+      description: >-
+        Called by the ordering site's own /api/dine-in/call-waiter route
+        (server-to-server, same shared-secret pattern as
+        /api/orders/broadcast) right after a diner taps the button — never
+        by the device itself. Rate-limited to one call per table per
+        minute server-side.
+      parameters:
+        - name: X-Broadcast-Secret
+          in: header
+          required: true
+          schema: { type: string }
+          description: Must equal the server's ORDER_BROADCAST_SECRET env value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tableId]
+              properties:
+                tableId: { type: string }
+      responses:
+        "200":
+          description: Emitted (or not, if no Socket.IO server was attached)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  delivered: { type: boolean }
+        "400": { description: Invalid request body }
+        "401": { description: Missing/incorrect X-Broadcast-Secret }
+        "404": { description: Table not found or inactive }
+        "429": { description: Already called for this table in the last minute }
 
 components:
   securitySchemes:
@@ -713,6 +772,35 @@ components:
               quantity: { type: integer }
               addOnNames: { type: array, items: { type: string } }
 
+    RestaurantTableStatus:
+      type: string
+      enum: [AVAILABLE, RESERVED, CLEANING, OUT_OF_SERVICE, OCCUPIED]
+
+    RestaurantTable:
+      type: object
+      required: [id, number, seats, status]
+      properties:
+        id: { type: string }
+        number: { type: string }
+        seats: { type: integer }
+        status: { $ref: '#/components/schemas/RestaurantTableStatus' }
+
+    TablesResponse:
+      type: object
+      required: [tables]
+      properties:
+        tables:
+          type: array
+          items: { $ref: '#/components/schemas/RestaurantTable' }
+
+    WaiterCallBroadcastPayload:
+      type: object
+      required: [tableId, tableNumber, calledAt]
+      properties:
+        tableId: { type: string }
+        tableNumber: { type: string }
+        calledAt: { type: string, format: date-time }
+
 x-realtime:
   description: >-
     Socket.IO server attached to the same Next.js HTTP server (see
@@ -730,3 +818,6 @@ x-realtime:
     store_status_updated:
       direction: server -> client
       description: "The accepting-orders toggle changed. Payload: { acceptingOrders: boolean }."
+    waiter_called:
+      direction: server -> client
+      description: A dine-in diner tapped "Call Waiter". Payload matches WaiterCallBroadcastPayload.

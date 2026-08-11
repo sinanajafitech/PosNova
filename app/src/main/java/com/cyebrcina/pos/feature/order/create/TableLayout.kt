@@ -24,12 +24,13 @@ import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
 
 /**
- * There's no floor-plan/table-management endpoint in `openapi.yaml` — `tableLabel` on a
- * [com.cyebrcina.pos.data.remote.model.DeviceOrder] is just a free-text string — so this is a
- * synthetic staff-facing table list (not backed by any per-table data from the server). Shared by
- * [ChooseTableDialog] and [TablesScreen] so both present the same table set.
+ * [ChooseTableDialog] (picking a table mid-order) still uses this synthetic set — `tableLabel` on
+ * a [com.cyebrcina.pos.data.remote.model.DeviceOrder] is just a free-text string with no per-table
+ * identity, so there's nothing real to pick from there. [TablesScreen] (the standalone Tables tab)
+ * uses real data instead — see [com.cyebrcina.pos.data.repository.TableRepository] — but shares
+ * this same [TableTile] rendering.
  */
-internal data class TableOption(val label: String, val seats: Int)
+internal data class TableOption(val label: String, val seats: Int, val id: String? = null)
 
 internal val syntheticTables = listOf(
     TableOption("1", 2), TableOption("2", 2), TableOption("3", 6), TableOption("4", 2),
@@ -37,7 +38,14 @@ internal val syntheticTables = listOf(
     TableOption("9", 4), TableOption("10", 4), TableOption("11", 6), TableOption("12", 2),
 )
 
-internal enum class TableTileVisualState { AVAILABLE, SELECTED, HELD }
+/** AVAILABLE/RESERVED/CLEANING/OUT_OF_SERVICE/OCCUPIED mirror Admin's real
+ * RestaurantTableStatus (plus the derived OCCUPIED) — same color language as
+ * the dine-in floor-plan page in Admin (green/red/gray/near-black) so
+ * status means the same thing in both places. SELECTED and HELD stay
+ * local-only concepts: SELECTED is [ChooseTableDialog]'s in-progress pick,
+ * HELD is a locally-parked new-order draft, neither of which Admin knows
+ * about. */
+internal enum class TableTileVisualState { AVAILABLE, SELECTED, HELD, RESERVED, CLEANING, OUT_OF_SERVICE, OCCUPIED }
 
 @Composable
 internal fun TableTile(
@@ -50,6 +58,10 @@ internal fun TableTile(
         TableTileVisualState.AVAILABLE -> TableColors(Color.Transparent, PosColors.Border, PosColors.Border, PosColors.Surface, PosColors.Neutral13)
         TableTileVisualState.SELECTED -> TableColors(PosColors.Blue50, PosColors.Blue100, PosColors.Blue100, PosColors.Blue500, PosColors.White)
         TableTileVisualState.HELD -> TableColors(PosColors.Pending50, PosColors.Pending200, PosColors.Pending200, PosColors.Pending500, PosColors.White)
+        TableTileVisualState.OCCUPIED -> TableColors(PosColors.Warning50, PosColors.Warning200, PosColors.Warning200, PosColors.Danger, PosColors.White)
+        TableTileVisualState.RESERVED -> TableColors(PosColors.Info50, PosColors.Info200, PosColors.Info200, PosColors.Info500, PosColors.White)
+        TableTileVisualState.CLEANING -> TableColors(PosColors.Neutral3, PosColors.Neutral5, PosColors.Neutral5, PosColors.Neutral7, PosColors.White)
+        TableTileVisualState.OUT_OF_SERVICE -> TableColors(PosColors.Neutral4, PosColors.Neutral9, PosColors.Neutral9, PosColors.Neutral9, PosColors.White)
     }
     val width = when (table.seats) {
         2 -> 130.dp

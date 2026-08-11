@@ -5,11 +5,13 @@ import com.cyebrcina.pos.data.repository.MenuRepository
 import com.cyebrcina.pos.data.repository.OrderRepository
 import com.cyebrcina.pos.data.repository.ReportRepository
 import com.cyebrcina.pos.data.repository.StoreStatusRepository
+import com.cyebrcina.pos.data.repository.TableRepository
 import com.cyebrcina.pos.data.repository.firehut.FireHutAuthRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutMenuRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutOrderRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutReportRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutStoreStatusRepositoryImpl
+import com.cyebrcina.pos.data.repository.firehut.FireHutTableRepositoryImpl
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -40,4 +42,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindMenuRepository(impl: FireHutMenuRepositoryImpl): MenuRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindTableRepository(impl: FireHutTableRepositoryImpl): TableRepository
 }

@@ -9,6 +9,14 @@ import javax.inject.Singleton
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import org.json.JSONObject
+
+/** A dine-in diner tapped "Call Waiter" on the menu — see Admin's
+ * POST /api/orders/waiter-call, which emits this. Unlike the order events
+ * below, there's no REST endpoint to re-poll for "current waiter calls",
+ * so the payload itself has to carry what the popup needs rather than
+ * just being a refresh signal. */
+data class WaiterCallEvent(val tableId: String, val tableNumber: String, val calledAt: String)
 
 /**
  * Socket.IO connection to Fire Hut's backend (see openapi.yaml's `x-realtime` section). This is
@@ -28,6 +36,9 @@ class FireHutRealtimeManager @Inject constructor() {
     private val _storeStatusEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
     val storeStatusEvents: SharedFlow<Unit> = _storeStatusEvents.asSharedFlow()
 
+    private val _waiterCallEvents = MutableSharedFlow<WaiterCallEvent>(extraBufferCapacity = 8)
+    val waiterCallEvents: SharedFlow<WaiterCallEvent> = _waiterCallEvents.asSharedFlow()
+
     fun connect(token: String) {
         disconnect()
         runCatching {
@@ -40,6 +51,14 @@ class FireHutRealtimeManager @Inject constructor() {
             newSocket.on("order_status_updated") { _orderEvents.tryEmit(Unit) }
             newSocket.on("order_payment_updated") { _orderEvents.tryEmit(Unit) }
             newSocket.on("store_status_updated") { _storeStatusEvents.tryEmit(Unit) }
+            newSocket.on("waiter_called") { args ->
+                val payload = args.firstOrNull() as? JSONObject
+                val tableId = payload?.optString("tableId")?.takeIf { it.isNotBlank() }
+                val tableNumber = payload?.optString("tableNumber")?.takeIf { it.isNotBlank() }
+                if (tableId != null && tableNumber != null) {
+                    _waiterCallEvents.tryEmit(WaiterCallEvent(tableId, tableNumber, payload.optString("calledAt")))
+                }
+            }
             newSocket.on(Socket.EVENT_CONNECT_ERROR) { args -> Log.w(TAG, "Socket connect error: ${args.firstOrNull()}") }
             newSocket.connect()
             socket = newSocket
