@@ -1,11 +1,16 @@
 package com.cyebrcina.pos.payment.model
 
-/** Which card-payment integration is active. Selected in [com.cyebrcina.pos.di.PaymentModule]. */
+/** Which card-payment integration is active — selectable in Settings, persisted in
+ * [com.cyebrcina.pos.data.local.TerminalSettingsStore], and resolved at runtime by
+ * [com.cyebrcina.pos.payment.SelectedPaymentTerminalService] via the
+ * `Map<PaymentProvider, PaymentTerminalService>` bound in [com.cyebrcina.pos.di.PaymentModule]. */
 enum class PaymentProvider {
     MOCK,
     STRIPE_TERMINAL,
     SUMUP,
     FLATPAY,
+    DOJO,
+    TEYA,
 }
 
 enum class TerminalStatus {

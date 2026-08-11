@@ -537,5 +537,7 @@ class NewOrderViewModel @Inject constructor(
         PaymentProvider.STRIPE_TERMINAL -> "STRIPE"
         PaymentProvider.SUMUP -> "SUMUP"
         PaymentProvider.FLATPAY -> "FLATPAY"
+        PaymentProvider.DOJO -> "DOJO"
+        PaymentProvider.TEYA -> "TEYA"
     }
 }

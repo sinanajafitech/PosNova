@@ -253,6 +253,8 @@ class OrderDetailViewModel @Inject constructor(
             PaymentProvider.STRIPE_TERMINAL -> "STRIPE"
             PaymentProvider.SUMUP -> "SUMUP"
             PaymentProvider.FLATPAY -> "FLATPAY"
+            PaymentProvider.DOJO -> "DOJO"
+            PaymentProvider.TEYA -> "TEYA"
         }
         orderRepository.chargeOrder(orderId, provider, amount, result)
             .onFailure { err ->

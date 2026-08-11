@@ -1,5 +1,7 @@
 package com.cyebrcina.pos.feature.profile.view
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,11 +17,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -34,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -44,10 +48,13 @@ import com.cyebrcina.pos.core.components.PosTopBar
 import com.cyebrcina.pos.core.components.SecondaryButton
 import com.cyebrcina.pos.core.components.StatusBadge
 import com.cyebrcina.pos.core.theme.PosColors
+import com.cyebrcina.pos.core.theme.PosNovaShapes
 import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
 import com.cyebrcina.pos.data.local.KitchenPrinterSettings
 import com.cyebrcina.pos.data.remote.model.ReceiptPrefs
+import com.cyebrcina.pos.payment.model.PaymentProvider
+import com.cyebrcina.pos.payment.model.TerminalStatus
 import com.cyebrcina.pos.printer.model.DiscoveredPrinter
 import com.cyebrcina.pos.printer.model.PrinterConnection
 import com.cyebrcina.pos.printer.model.PrinterStatus
@@ -112,11 +119,14 @@ fun SettingsScreen(
                 if (state.discoveredPrinters.isNotEmpty()) {
                     Spacer(Modifier.height(Spacing.sm))
                     Text("Discovered Devices", style = PosTextStyles.bodyXSmallMedium, color = PosColors.Neutral7)
-                    Spacer(Modifier.height(Spacing.xxs))
-                    Column(Modifier.fillMaxWidth()) {
+                    Spacer(Modifier.height(Spacing.xs))
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                         state.discoveredPrinters.forEach { printer ->
-                            PrinterItem(printer = printer, onClick = { viewModel.selectPrinter(printer) })
-                            HorizontalDivider(color = PosColors.Neutral2)
+                            PrinterCard(
+                                printer = printer,
+                                selected = printer == state.selectedMainPrinter,
+                                onClick = { viewModel.selectPrinter(printer) },
+                            )
                         }
                     }
                 }
@@ -147,6 +157,16 @@ fun SettingsScreen(
                 onTestPrint = viewModel::testKitchenPrint,
             )
 
+            Spacer(Modifier.height(Spacing.lg))
+            CardTerminalSection(
+                selectedProvider = state.terminalProvider,
+                status = state.terminalStatus,
+                isConnecting = state.isConnectingTerminal,
+                error = state.terminalError,
+                onSelectProvider = viewModel::selectTerminalProvider,
+                onConnect = viewModel::connectTerminal,
+            )
+
             state.receiptPrefs?.let { prefs ->
                 Spacer(Modifier.height(Spacing.lg))
                 ReceiptSettingsSection(prefs)
@@ -162,10 +182,22 @@ fun SettingsScreen(
     }
 }
 
+/** One discovered printer as its own card — tinted/bordered in the brand color and marked with a
+ * checkmark when it's the currently-selected main printer, plain otherwise. */
 @Composable
-private fun PrinterItem(printer: DiscoveredPrinter, onClick: () -> Unit) {
+private fun PrinterCard(printer: DiscoveredPrinter, selected: Boolean, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = Spacing.xs),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(PosNovaShapes.medium)
+            .background(if (selected) PosColors.Primary50 else PosColors.Neutral3)
+            .border(
+                width = if (selected) 1.5.dp else 1.dp,
+                color = if (selected) PosColors.Primary500 else PosColors.Neutral4,
+                shape = PosNovaShapes.medium,
+            )
+            .clickable(onClick = onClick)
+            .padding(Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -176,10 +208,10 @@ private fun PrinterItem(printer: DiscoveredPrinter, onClick: () -> Unit) {
                 PrinterConnection.BuiltIn -> Icons.Default.Print
             },
             contentDescription = null,
-            tint = PosColors.Neutral7,
+            tint = if (selected) PosColors.Primary500 else PosColors.Neutral7,
             modifier = Modifier.padding(end = Spacing.xs),
         )
-        Column {
+        Column(Modifier.weight(1f)) {
             Text(printer.name, style = PosTextStyles.bodySmallMedium, color = PosColors.Neutral12)
             val detail = when (val conn = printer.connection) {
                 is PrinterConnection.Bluetooth -> conn.address
@@ -188,6 +220,9 @@ private fun PrinterItem(printer: DiscoveredPrinter, onClick: () -> Unit) {
                 PrinterConnection.BuiltIn -> "Internal Terminal Printer"
             }
             Text(detail, style = PosTextStyles.bodyXSmallRegular, color = PosColors.Neutral7)
+        }
+        if (selected) {
+            Icon(Icons.Default.CheckCircle, contentDescription = "Selected", tint = PosColors.Primary500)
         }
     }
 }
@@ -326,4 +361,102 @@ private fun PrefRow(label: String, value: String) {
         Text(label, style = PosTextStyles.bodySmallRegular, color = PosColors.Neutral12)
         Text(value, style = PosTextStyles.bodySmallMedium, color = PosColors.Neutral7)
     }
+}
+
+private fun PaymentProvider.displayName(): String = when (this) {
+    PaymentProvider.MOCK -> "Mock (testing, no hardware)"
+    PaymentProvider.STRIPE_TERMINAL -> "Stripe Terminal"
+    PaymentProvider.SUMUP -> "SumUp (Bluetooth)"
+    PaymentProvider.FLATPAY -> "Flatpay"
+    PaymentProvider.DOJO -> "Dojo"
+    PaymentProvider.TEYA -> "Teya"
+}
+
+/**
+ * Provider picker as cards (matching [PrinterCard]'s style) plus live connection status. Exactly
+ * one provider is active at a time — selecting one saves it and connects immediately. SumUp's
+ * own checkout SDK handles Bluetooth reader pairing itself when a charge is started (there's no
+ * separate pairing step to build here); the other providers are still "not configured yet"
+ * scaffolds pending real SDK/API details — see CARD_PAYMENT_SETUP.md.
+ */
+@Composable
+private fun CardTerminalSection(
+    selectedProvider: PaymentProvider,
+    status: TerminalStatus,
+    isConnecting: Boolean,
+    error: String?,
+    onSelectProvider: (PaymentProvider) -> Unit,
+    onConnect: () -> Unit,
+) {
+    Text("Card Terminal", style = PosTextStyles.h6, color = PosColors.Neutral12)
+    Spacer(Modifier.height(Spacing.xxs))
+    AppCard(modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Connection", style = PosTextStyles.bodySmallRegular, color = PosColors.Neutral7)
+            TerminalStatusBadge(status)
+        }
+        Spacer(Modifier.height(Spacing.sm))
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            PaymentProvider.entries.forEach { provider ->
+                TerminalProviderCard(
+                    provider = provider,
+                    selected = provider == selectedProvider,
+                    onClick = { onSelectProvider(provider) },
+                )
+            }
+        }
+        Spacer(Modifier.height(Spacing.sm))
+        SecondaryButton(
+            text = "Connect",
+            onClick = onConnect,
+            loading = isConnecting,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        error?.let { message ->
+            Spacer(Modifier.height(Spacing.xxs))
+            Text(message, style = PosTextStyles.bodyXSmallMedium, color = PosColors.Warning500)
+        }
+    }
+}
+
+@Composable
+private fun TerminalProviderCard(provider: PaymentProvider, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(PosNovaShapes.medium)
+            .background(if (selected) PosColors.Primary50 else PosColors.Neutral3)
+            .border(
+                width = if (selected) 1.5.dp else 1.dp,
+                color = if (selected) PosColors.Primary500 else PosColors.Neutral4,
+                shape = PosNovaShapes.medium,
+            )
+            .clickable(onClick = onClick)
+            .padding(Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.CreditCard,
+            contentDescription = null,
+            tint = if (selected) PosColors.Primary500 else PosColors.Neutral7,
+            modifier = Modifier.padding(end = Spacing.xs),
+        )
+        Text(provider.displayName(), style = PosTextStyles.bodySmallMedium, color = PosColors.Neutral12, modifier = Modifier.weight(1f))
+        if (selected) {
+            Icon(Icons.Default.CheckCircle, contentDescription = "Selected", tint = PosColors.Primary500)
+        }
+    }
+}
+
+@Composable
+private fun TerminalStatusBadge(status: TerminalStatus) {
+    val (label, tone) = when (status) {
+        TerminalStatus.READY -> "Connected" to BadgeTone.SUCCESS
+        TerminalStatus.CONNECTING -> "Connecting…" to BadgeTone.PENDING
+        TerminalStatus.AWAITING_CARD -> "Awaiting card" to BadgeTone.PENDING
+        TerminalStatus.PROCESSING -> "Processing" to BadgeTone.PENDING
+        TerminalStatus.DISCONNECTED -> "Disconnected" to BadgeTone.NEUTRAL
+        TerminalStatus.ERROR -> "Error" to BadgeTone.WARNING
+    }
+    StatusBadge(text = label, tone = tone)
 }

@@ -4,11 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cyebrcina.pos.data.local.KitchenPrinterSettings
 import com.cyebrcina.pos.data.local.PrinterSettingsStore
+import com.cyebrcina.pos.data.local.TerminalSettingsStore
 import com.cyebrcina.pos.data.model.DeviceSession
 import com.cyebrcina.pos.data.remote.model.ReceiptPrefs
 import com.cyebrcina.pos.data.repository.AuthRepository
 import com.cyebrcina.pos.data.repository.OrderRepository
 import com.cyebrcina.pos.data.repository.StoreStatusRepository
+import com.cyebrcina.pos.payment.PaymentTerminalService
+import com.cyebrcina.pos.payment.model.PaymentProvider
+import com.cyebrcina.pos.payment.model.TerminalStatus
 import com.cyebrcina.pos.printer.PrinterService
 import com.cyebrcina.pos.printer.ReceiptBuilder
 import com.cyebrcina.pos.printer.model.DiscoveredPrinter
@@ -30,6 +34,7 @@ data class SettingsUiState(
     val session: DeviceSession? = null,
     val printerStatus: PrinterStatus = PrinterStatus.UNKNOWN,
     val discoveredPrinters: List<DiscoveredPrinter> = emptyList(),
+    val selectedMainPrinter: DiscoveredPrinter? = null,
     val isTestPrinting: Boolean = false,
     val testPrintError: String? = null,
     val acceptingOrders: Boolean? = null,
@@ -38,6 +43,10 @@ data class SettingsUiState(
     val isTestPrintingKitchen: Boolean = false,
     val kitchenTestResult: String? = null,
     val receiptPrefs: ReceiptPrefs? = null,
+    val terminalProvider: PaymentProvider = PaymentProvider.MOCK,
+    val terminalStatus: TerminalStatus = TerminalStatus.DISCONNECTED,
+    val isConnectingTerminal: Boolean = false,
+    val terminalError: String? = null,
 )
 
 private data class ExternalState(
@@ -48,12 +57,20 @@ private data class ExternalState(
     val kitchenPrinter: KitchenPrinterSettings,
 )
 
+private data class TerminalState(
+    val provider: PaymentProvider,
+    val status: TerminalStatus,
+    val selectedMainPrinter: DiscoveredPrinter?,
+)
+
 private data class LocalFlags(
     val isTestPrinting: Boolean = false,
     val testPrintError: String? = null,
     val isTogglingStatus: Boolean = false,
     val isTestPrintingKitchen: Boolean = false,
     val kitchenTestResult: String? = null,
+    val isConnectingTerminal: Boolean = false,
+    val terminalError: String? = null,
 )
 
 @HiltViewModel
@@ -64,6 +81,8 @@ class SettingsViewModel @Inject constructor(
     private val printerService: PrinterService,
     private val printerSettingsStore: PrinterSettingsStore,
     private val kitchenPrinterDispatcher: KitchenPrinterDispatcher,
+    private val paymentTerminalService: PaymentTerminalService,
+    private val terminalSettingsStore: TerminalSettingsStore,
 ) : ViewModel() {
 
     private val localFlags = MutableStateFlow(LocalFlags())
@@ -89,15 +108,25 @@ class SettingsViewModel @Inject constructor(
         ExternalState(session, printerStatus, printers, accepting, kitchenPrinter)
     }
 
+    private val terminalState = combine(
+        terminalSettingsStore.selectedProvider,
+        paymentTerminalService.status,
+        printerSettingsStore.mainPrinter,
+    ) { provider, status, mainPrinter ->
+        TerminalState(provider, status, mainPrinter)
+    }
+
     val uiState: StateFlow<SettingsUiState> = combine(
         externalState,
+        terminalState,
         orderRepository.receiptPrefs,
         localFlags,
-    ) { external, receiptPrefs, local ->
+    ) { external, terminal, receiptPrefs, local ->
         SettingsUiState(
             session = external.session,
             printerStatus = external.printerStatus,
             discoveredPrinters = external.discoveredPrinters,
+            selectedMainPrinter = terminal.selectedMainPrinter,
             isTestPrinting = local.isTestPrinting,
             testPrintError = local.testPrintError,
             acceptingOrders = external.acceptingOrders,
@@ -106,6 +135,10 @@ class SettingsViewModel @Inject constructor(
             isTestPrintingKitchen = local.isTestPrintingKitchen,
             kitchenTestResult = local.kitchenTestResult,
             receiptPrefs = receiptPrefs,
+            terminalProvider = terminal.provider,
+            terminalStatus = terminal.status,
+            isConnectingTerminal = local.isConnectingTerminal,
+            terminalError = local.terminalError,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
 
@@ -153,6 +186,23 @@ class SettingsViewModel @Inject constructor(
                 false -> "Couldn't reach the kitchen printer. Check the IP/port and that it's on the same network."
             }
             localFlags.update { it.copy(isTestPrintingKitchen = false, kitchenTestResult = message) }
+        }
+    }
+
+    /** Switches the active card terminal provider and immediately tries to connect to it. */
+    fun selectTerminalProvider(provider: PaymentProvider) {
+        viewModelScope.launch {
+            terminalSettingsStore.setSelectedProvider(provider)
+            connectTerminal()
+        }
+    }
+
+    fun connectTerminal() {
+        viewModelScope.launch {
+            localFlags.update { it.copy(isConnectingTerminal = true, terminalError = null) }
+            paymentTerminalService.connect()
+                .onFailure { err -> localFlags.update { it.copy(terminalError = err.message) } }
+            localFlags.update { it.copy(isConnectingTerminal = false) }
         }
     }
 
