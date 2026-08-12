@@ -458,6 +458,22 @@ paths:
         "400": { description: Invalid phone number }
         "401": { $ref: '#/components/responses/Unauthorized' }
 
+  /api/device/calls:
+    get:
+      tags: [Device Tables]
+      summary: Recent incoming calls for the till's own Calls tab
+      description: >-
+        The same PhoneCallLog rows Admin's own Calls page lists.
+        `orders` is almost always 0 or 1 items — a call turns into at
+        most one order via "Take Order".
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CallsResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
   # ---------------------------------------------------------------------
   # SERVER-TO-SERVER (not called by the device itself)
   # ---------------------------------------------------------------------
@@ -850,6 +866,35 @@ components:
         ok: { type: boolean }
         id: { type: string, nullable: true }
         name: { type: string, nullable: true }
+
+    DeviceCallOrder:
+      type: object
+      required: [id, number]
+      properties:
+        id: { type: string }
+        number: { type: string }
+
+    DeviceCall:
+      type: object
+      required: [id, phone, isKnown, receivedAt, orders]
+      properties:
+        id: { type: string }
+        phone: { type: string, description: Last-10-digit normalized UK national number }
+        callerName: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        isKnown: { type: boolean }
+        receivedAt: { type: string, format: date-time }
+        orders:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceCallOrder' }
+
+    CallsResponse:
+      type: object
+      required: [calls]
+      properties:
+        calls:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceCall' }
 
 x-realtime:
   description: >-

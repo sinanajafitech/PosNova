@@ -13,6 +13,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.cyebrcina.pos.feature.calls.CallsScreen
 import com.cyebrcina.pos.feature.menu.MenuScreen
 import com.cyebrcina.pos.feature.order.create.CheckoutScreen
 import com.cyebrcina.pos.feature.order.create.NewOrderScreen
@@ -79,6 +80,9 @@ fun MainGraphHost(windowSizeClass: WindowSizeClass, onLoggedOut: () -> Unit) {
             }
             composable(MainRoutes.ORDER_HISTORY) {
                 OrderHistoryScreen(onOpenOrder = { orderId -> navController.navigate(MainRoutes.orderDetail(orderId)) })
+            }
+            composable(MainRoutes.CALLS) {
+                CallsScreen(onOpenOrder = { orderId -> navController.navigate(MainRoutes.orderDetail(orderId)) })
             }
             composable(MainRoutes.MENU) { MenuScreen() }
             composable(MainRoutes.REPORT) { ReportScreen() }

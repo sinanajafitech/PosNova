@@ -1,6 +1,7 @@
 package com.cyebrcina.pos.data.remote
 
 import com.cyebrcina.pos.data.remote.model.AcceptOrderResponse
+import com.cyebrcina.pos.data.remote.model.CallsResponse
 import com.cyebrcina.pos.data.remote.model.ChargeOrderRequest
 import com.cyebrcina.pos.data.remote.model.ChargeOrderResponse
 import com.cyebrcina.pos.data.remote.model.CreateOrderRequest
@@ -91,4 +92,8 @@ interface FireHutDeviceApi {
     /** Real, live. Saves/updates a caller's name/address/notes from the Incoming Call popup. */
     @POST("api/device/phone-contacts")
     suspend fun savePhoneContact(@Body request: SavePhoneContactRequest): Response<SavePhoneContactResponse>
+
+    /** Real, live. Recent incoming calls for the till's own Calls tab. */
+    @GET("api/device/calls")
+    suspend fun calls(): Response<CallsResponse>
 }
