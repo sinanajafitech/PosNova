@@ -26,6 +26,7 @@ import com.cyebrcina.pos.feature.order.list.OrderQueueScreen
 import com.cyebrcina.pos.feature.profile.view.SettingsScreen
 import com.cyebrcina.pos.feature.register.RegisterScreen
 import com.cyebrcina.pos.feature.report.ReportScreen
+import com.cyebrcina.pos.feature.tools.ToolsScreen
 import com.cyebrcina.pos.feature.incomingcall.IncomingCallOverlay
 import com.cyebrcina.pos.feature.waitercall.WaiterCallOverlay
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -89,6 +90,7 @@ fun MainGraphHost(windowSizeClass: WindowSizeClass, onLoggedOut: () -> Unit) {
             composable(MainRoutes.REPORT) { ReportScreen() }
             composable(MainRoutes.SETTINGS) { SettingsScreen(onLoggedOut = onLoggedOut) }
             composable(MainRoutes.REGISTER) { RegisterScreen() }
+            composable(MainRoutes.TOOLS) { ToolsScreen() }
             composable(MainRoutes.TABLES) {
                 TablesScreen(
                     onNavigateToNewOrder = {

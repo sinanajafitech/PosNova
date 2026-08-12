@@ -49,3 +49,11 @@ data class MenuResponse(
     val categories: List<MenuCategory> = emptyList(),
     val addOns: List<MenuAddOn> = emptyList(),
 )
+
+/** Real, live. Response from POST api/device/menu/products/{id}/toggle-sold-out. */
+@Serializable
+data class ToggleSoldOutResponse(
+    val id: String,
+    val name: String,
+    val available: Boolean,
+)

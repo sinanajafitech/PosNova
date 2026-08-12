@@ -33,4 +33,14 @@ class FireHutMenuRepositoryImpl @Inject constructor(
     }.recoverCatching { cause ->
         throw if (cause is IOException) IOException("Couldn't reach the server — check your connection", cause) else cause
     }
+
+    override suspend fun toggleSoldOut(productId: String): Result<Boolean> = runCatching {
+        val response = api.toggleProductSoldOut(productId)
+        if (!response.isSuccessful) throw IllegalStateException(response.errorMessageOrDefault(json))
+        val available = response.body()?.available ?: throw IllegalStateException("Empty response")
+        refresh()
+        available
+    }.recoverCatching { cause ->
+        throw if (cause is IOException) IOException("Couldn't reach the server — check your connection", cause) else cause
+    }
 }

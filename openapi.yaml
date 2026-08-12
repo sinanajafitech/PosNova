@@ -184,6 +184,34 @@ paths:
                     items: { $ref: '#/components/schemas/MenuAddOn' }
         "401": { $ref: '#/components/responses/Unauthorized' }
 
+  /api/device/menu/products/{id}/toggle-sold-out:
+    post:
+      tags: [Device Menu]
+      summary: 86 an item, or bring it back — the till's own Tools/86 Board
+      description: >-
+        Flips between EIGHTY_SIXED and ACTIVE — the exact same toggle
+        Admin's own Menu page uses. Broadcasts `menu_updated` so every
+        till and any open Admin Menu page reflects it immediately.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name, available]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  available: { type: boolean }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { description: Product not found }
+
   # ---------------------------------------------------------------------
   # ORDERS
   # ---------------------------------------------------------------------
@@ -1060,3 +1088,10 @@ x-realtime:
       description: >-
         A call came in on the restaurant's phone line (bOnline webhook).
         Payload matches IncomingCallBroadcastPayload.
+    menu_updated:
+      direction: server -> client
+      description: >-
+        A product was 86'd or brought back, from a till's Tools/86 Board
+        or Admin's own Menu page. Payload: { productId: string, status:
+        string, available: boolean }. Consumers should refetch
+        GET /api/device/menu rather than trust the payload as complete.

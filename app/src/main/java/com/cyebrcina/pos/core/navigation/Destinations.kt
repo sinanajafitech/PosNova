@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Handyman
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocalAtm
 import androidx.compose.material.icons.filled.QueryStats
@@ -37,6 +38,8 @@ object MainRoutes {
 
     const val REGISTER = "main/register"
 
+    const val TOOLS = "main/tools"
+
     /** Nested graph for the till order-taking flow — see [com.cyebrcina.pos.core.navigation.NewOrderRoutes]. */
     const val NEW_ORDER_GRAPH = "main/new-order"
 
@@ -57,6 +60,7 @@ enum class MainSection(val route: String, val label: String, val icon: ImageVect
     TABLES(MainRoutes.TABLES, "Tables", Icons.Filled.TableRestaurant),
     CALLS(MainRoutes.CALLS, "Calls", Icons.Filled.Call),
     REGISTER(MainRoutes.REGISTER, "Register", Icons.Filled.LocalAtm),
+    TOOLS(MainRoutes.TOOLS, "Tools", Icons.Filled.Handyman),
     HISTORY(MainRoutes.ORDER_HISTORY, "Transactions", Icons.Filled.History),
     MENU(MainRoutes.MENU, "Menu", Icons.Filled.RestaurantMenu),
     REPORT(MainRoutes.REPORT, "Report", Icons.Filled.QueryStats),

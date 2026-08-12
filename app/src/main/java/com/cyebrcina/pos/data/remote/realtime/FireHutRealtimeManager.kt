@@ -58,6 +58,11 @@ class FireHutRealtimeManager @Inject constructor() {
     private val _incomingCallEvents = MutableSharedFlow<IncomingCallEvent>(extraBufferCapacity = 8)
     val incomingCallEvents: SharedFlow<IncomingCallEvent> = _incomingCallEvents.asSharedFlow()
 
+    /** A product was 86'd/brought back from this till, another till's Tools/86 Board, or
+     * Admin's own Menu page — signal-only, same pattern as [orderEvents]. */
+    private val _menuEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    val menuEvents: SharedFlow<Unit> = _menuEvents.asSharedFlow()
+
     fun connect(token: String) {
         disconnect()
         runCatching {
@@ -94,6 +99,7 @@ class FireHutRealtimeManager @Inject constructor() {
                     )
                 }
             }
+            newSocket.on("menu_updated") { _menuEvents.tryEmit(Unit) }
             newSocket.on(Socket.EVENT_CONNECT_ERROR) { args -> Log.w(TAG, "Socket connect error: ${args.firstOrNull()}") }
             newSocket.connect()
             socket = newSocket

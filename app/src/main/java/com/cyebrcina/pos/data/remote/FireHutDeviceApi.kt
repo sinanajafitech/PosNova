@@ -26,6 +26,7 @@ import com.cyebrcina.pos.data.remote.model.SetStoreStatusRequest
 import com.cyebrcina.pos.data.remote.model.SetStoreStatusResponse
 import com.cyebrcina.pos.data.remote.model.StoreStatusResponse
 import com.cyebrcina.pos.data.remote.model.TablesResponse
+import com.cyebrcina.pos.data.remote.model.ToggleSoldOutResponse
 import com.cyebrcina.pos.data.remote.model.ZReport
 import retrofit2.Response
 import retrofit2.http.Body
@@ -118,4 +119,8 @@ interface FireHutDeviceApi {
      * this till's own CASH sales during the session. */
     @POST("api/device/register/close")
     suspend fun closeRegister(@Body request: CloseRegisterRequest): Response<CashRegisterSessionResponse>
+
+    /** Real, live. 86s a product or brings it back — the till's own Tools/86 Board. */
+    @POST("api/device/menu/products/{id}/toggle-sold-out")
+    suspend fun toggleProductSoldOut(@Path("id") productId: String): Response<ToggleSoldOutResponse>
 }
