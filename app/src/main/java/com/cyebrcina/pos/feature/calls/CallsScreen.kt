@@ -52,8 +52,8 @@ private fun formatPhoneForDisplay(phone: String): String = if (phone.length == 1
 
 /**
  * Recent calls for the restaurant's phone line — mirrors Admin's own Calls page, over
- * `GET /api/device/calls`. A call that was turned into an order (via the Incoming Call
- * popup's "Take Order") shows a chevron opening [OrderListDialog].
+ * `GET /api/device/calls`. Tapping any row opens [OrderListDialog], listing the order(s) that
+ * call turned into (via the Incoming Call popup's "Take Order"), or a "no orders" message.
  */
 @Composable
 fun CallsScreen(
@@ -100,7 +100,7 @@ fun CallsScreen(
             ) {
                 LazyColumn {
                     items(state.calls, key = { it.id }) { call ->
-                        CallRow(call, onClick = { if (call.orders.isNotEmpty()) callShowingOrders = call })
+                        CallRow(call, onClick = { callShowingOrders = call })
                         HorizontalDivider(color = PosColors.Border)
                     }
                 }
@@ -125,7 +125,7 @@ private fun CallRow(call: DeviceCall, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = call.orders.isNotEmpty(), onClick = onClick)
+            .clickable(onClick = onClick)
             .padding(vertical = Spacing.sm, horizontal = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -147,16 +147,12 @@ private fun CallRow(call: DeviceCall, onClick: () -> Unit) {
             color = PosColors.TextSecondary,
             modifier = Modifier.width(140.dp),
         )
-        if (call.orders.isNotEmpty()) {
-            Icon(Icons.Filled.ChevronRight, contentDescription = "View order", tint = PosColors.Blue500)
-        } else {
-            Spacer(Modifier.width(24.dp))
-        }
+        Icon(Icons.Filled.ChevronRight, contentDescription = "View orders", tint = PosColors.Blue500)
     }
 }
 
-/** Lists the order(s) a call turned into (almost always exactly one) — tapping one navigates
- * to the existing [com.cyebrcina.pos.feature.order.detail.OrderDetailScreen]. */
+/** Lists the order(s) a call turned into (almost always exactly one, sometimes none) —
+ * tapping one navigates to the existing [com.cyebrcina.pos.feature.order.detail.OrderDetailScreen]. */
 @Composable
 private fun OrderListDialog(call: DeviceCall, onDismiss: () -> Unit, onOpenOrder: (orderId: String) -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
@@ -168,9 +164,17 @@ private fun OrderListDialog(call: DeviceCall, onDismiss: () -> Unit, onOpenOrder
                     color = PosColors.Neutral12,
                 )
                 Spacer(Modifier.height(Spacing.sm))
-                call.orders.forEach { order ->
-                    OrderListRow(order, onClick = { onOpenOrder(order.id) })
-                    HorizontalDivider(color = PosColors.Border)
+                if (call.orders.isEmpty()) {
+                    Text(
+                        "No orders for this call.",
+                        style = PosTextStyles.bodySmallRegular,
+                        color = PosColors.TextSecondary,
+                    )
+                } else {
+                    call.orders.forEach { order ->
+                        OrderListRow(order, onClick = { onOpenOrder(order.id) })
+                        HorizontalDivider(color = PosColors.Border)
+                    }
                 }
             }
         }
