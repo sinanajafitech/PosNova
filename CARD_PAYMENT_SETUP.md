@@ -1,9 +1,19 @@
 # Wiring in a real card payment terminal
 
-The Payment screen's "Card" option now drives a real present-card → processing →
-approved/declined flow (`PaymentViewModel.chargeCard()`), but it's backed by
+The Checkout screen's "Card" option now drives a real present-card → processing →
+approved/declined flow (`NewOrderViewModel.chargeCard()`), but it's backed by
 `MockPaymentTerminalService` until a real provider is configured — same honest-scaffold approach
 as the Imin printer. This doc covers connecting a real one.
+
+**Which provider a till uses is set centrally in Admin** (Settings → Card Terminal), not on the
+device — `SelectedPaymentTerminalService` reads it from the device API's polled `cardTerminal`
+config and dispatches to the matching `PaymentTerminalService` at runtime (a Hilt multibinding,
+`Map<PaymentProvider, PaymentTerminalService>` — the "bigger change" step 1 below used to
+describe is already done). Until a real one is wired in, Admin's "Manual Card Fallback" toggle
+(on by default) lets the till offer "Record as Card (manual)" instead of blocking card sales
+entirely — see `NewOrderViewModel.chargeCard()`'s `PaymentSdkNotConfiguredException` handling.
+That fallback is deliberately never offered for a real decline from a provider that *is* wired
+up, only for "nothing's configured yet".
 
 ## What exists today
 
@@ -26,11 +36,12 @@ as the Imin printer. This doc covers connecting a real one.
 
 ## Steps to connect a real provider
 
-1. **Pick one provider** to bind — `PaymentModule.bindPaymentTerminalService` binds exactly one
-   implementation at a time. (If you genuinely need to support multiple providers side by side —
-   e.g. different terminals for different store locations — that's a bigger change: inject a
-   `Map<PaymentProvider, PaymentTerminalService>` via Hilt's multibinding instead of a single
-   `@Binds`, and pick the active one at runtime from a settings value.)
+1. **Pick which provider to implement for real** — all six are already bound via Hilt
+   multibinding (`Map<PaymentProvider, PaymentTerminalService>`) and `SelectedPaymentTerminalService`
+   already picks the active one at runtime from Admin's Card Terminal setting, so there's no
+   `PaymentModule` wiring left to do here — just make the chosen provider's own service class
+   (e.g. `StripeTerminalPaymentService`) actually call its SDK instead of throwing
+   `PaymentSdkNotConfiguredException`.
 2. **Get the SDK + credentials** from that provider's developer portal (Stripe: a Stripe account
    + secret/publishable keys; SumUp: an App ID + affiliate key; Flatpay: whatever they require —
    confirm with them directly).

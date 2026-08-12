@@ -20,8 +20,8 @@ import com.cyebrcina.pos.data.repository.AuthRepository
 import com.cyebrcina.pos.data.repository.MenuRepository
 import com.cyebrcina.pos.data.repository.OrderRepository
 import com.cyebrcina.pos.payment.PaymentTerminalService
-import com.cyebrcina.pos.payment.model.CardChargeResult
 import com.cyebrcina.pos.payment.model.PaymentProvider
+import com.cyebrcina.pos.payment.model.PaymentSdkNotConfiguredException
 import com.cyebrcina.pos.payment.model.TerminalStatus
 import com.cyebrcina.pos.printer.PrinterService
 import com.cyebrcina.pos.printer.ReceiptBuilder
@@ -75,6 +75,12 @@ data class NewOrderUiState(
     val cashTendered: String = "",
     val terminalStatus: TerminalStatus = TerminalStatus.DISCONNECTED,
     val cardChargeError: String? = null,
+    // True only when the last charge attempt failed specifically because
+    // the selected provider's SDK isn't wired up (never for a real
+    // decline), and Admin's Card Terminal settings allow the fallback —
+    // see NewOrderViewModel.chargeCard(). Offers "Record as Card
+    // (manual)" instead of leaving staff stuck.
+    val cardChargeSdkNotConfigured: Boolean = false,
     val completedOrder: DeviceOrder? = null,
     val printWarning: String? = null,
     val qrPayment: QrPaymentState = QrPaymentState(),
@@ -128,6 +134,7 @@ class NewOrderViewModel @Inject constructor(
     private val paymentMethod = MutableStateFlow(TillPaymentMethod.CASH)
     private val cashTendered = MutableStateFlow("")
     private val cardChargeError = MutableStateFlow<String?>(null)
+    private val cardChargeSdkNotConfigured = MutableStateFlow(false)
     private val completedOrder = MutableStateFlow<DeviceOrder?>(null)
     private val printWarning = MutableStateFlow<String?>(null)
     private val qrPayment = MutableStateFlow(QrPaymentState())
@@ -231,7 +238,10 @@ class NewOrderViewModel @Inject constructor(
                 qrPayment = checkout.qrPayment,
             )
         },
-    ) { categories, addOns, partial -> partial.copy(categories = categories, addOns = addOns) }
+        cardChargeSdkNotConfigured,
+    ) { categories, addOns, partial, sdkNotConfigured ->
+        partial.copy(categories = categories, addOns = addOns, cardChargeSdkNotConfigured = sdkNotConfigured)
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), NewOrderUiState())
 
     init {
@@ -336,6 +346,7 @@ class NewOrderViewModel @Inject constructor(
     fun onPaymentMethodChanged(method: TillPaymentMethod) {
         paymentMethod.value = method
         cardChargeError.value = null
+        cardChargeSdkNotConfigured.value = false
     }
 
     fun onCashTenderedChange(value: String) = cashTendered.update { value }
@@ -344,9 +355,29 @@ class NewOrderViewModel @Inject constructor(
         val state = uiState.value
         viewModelScope.launch {
             cardChargeError.value = null
+            cardChargeSdkNotConfigured.value = false
             paymentTerminalService.chargeCard(state.total, "GBP", "TILL-${System.currentTimeMillis()}")
-                .onSuccess { result -> submitOrder(cardChargeResult = result) }
-                .onFailure { err -> cardChargeError.value = err.message ?: "Card payment failed" }
+                .onSuccess { result ->
+                    submitOrder(
+                        CreateOrderPayment(
+                            method = "CARD",
+                            amount = state.total,
+                            provider = paymentTerminalService.provider.toApiName(),
+                            cardBrand = result.cardBrand,
+                            cardLast4 = result.cardLast4,
+                            terminalReference = result.transactionReference,
+                        ),
+                    )
+                }
+                .onFailure { err ->
+                    cardChargeError.value = err.message ?: "Card payment failed"
+                    // Only offer the manual fallback for "not configured yet" — never for a
+                    // real decline/timeout from a provider that's actually wired up, and only
+                    // when Admin's Card Terminal settings allow it.
+                    if (err is PaymentSdkNotConfiguredException && orderRepository.cardTerminal.value?.manualFallbackAllowed != false) {
+                        cardChargeSdkNotConfigured.value = true
+                    }
+                }
         }
     }
 
@@ -354,8 +385,24 @@ class NewOrderViewModel @Inject constructor(
         viewModelScope.launch { paymentTerminalService.cancelCharge() }
     }
 
+    /** No real terminal call — records a plain Card payment with no provider/brand/last4/
+     * reference, same shape as how an unconfigured PSP already works server-side. Only ever
+     * reachable when [NewOrderUiState.cardChargeSdkNotConfigured] is true, i.e. the last attempt
+     * failed specifically because nothing's configured, not from a real decline. */
+    fun submitManualCardPayment() {
+        val state = uiState.value
+        viewModelScope.launch {
+            cardChargeError.value = null
+            cardChargeSdkNotConfigured.value = false
+            submitOrder(CreateOrderPayment(method = "CARD", amount = state.total))
+        }
+    }
+
     fun confirmCashPayment() {
-        viewModelScope.launch { submitOrder(cardChargeResult = null) }
+        val state = uiState.value
+        viewModelScope.launch {
+            submitOrder(CreateOrderPayment(method = "CASH", amount = state.total, cashTendered = state.cashTenderedAmount))
+        }
     }
 
     /**
@@ -407,23 +454,10 @@ class NewOrderViewModel @Inject constructor(
         qrPayment.value = QrPaymentState()
     }
 
-    private suspend fun submitOrder(cardChargeResult: CardChargeResult?) {
+    private suspend fun submitOrder(payment: CreateOrderPayment) {
         val state = uiState.value
         isSubmitting.value = true
         submitError.value = null
-
-        val payment = if (cardChargeResult != null) {
-            CreateOrderPayment(
-                method = "CARD",
-                amount = state.total,
-                provider = paymentTerminalService.provider.toApiName(),
-                cardBrand = cardChargeResult.cardBrand,
-                cardLast4 = cardChargeResult.cardLast4,
-                terminalReference = cardChargeResult.transactionReference,
-            )
-        } else {
-            CreateOrderPayment(method = "CASH", amount = state.total, cashTendered = state.cashTenderedAmount)
-        }
 
         val request = CreateOrderRequest(
             type = if (state.orderType == TillOrderType.DINE_IN) DeviceOrderType.DINE_IN else DeviceOrderType.COLLECTION,

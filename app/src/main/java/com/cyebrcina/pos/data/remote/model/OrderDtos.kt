@@ -83,6 +83,10 @@ data class CardTerminalConfig(
     val merchantId: String? = null,
     val locationId: String? = null,
     val extra: String? = null,
+    // Whether the till may offer "Record as Card (manual)" when the
+    // selected provider's SDK isn't wired up yet — set centrally in
+    // Admin's Card Terminal settings, defaults true there too.
+    val manualFallbackAllowed: Boolean = true,
 )
 
 @Serializable

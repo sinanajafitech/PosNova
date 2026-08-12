@@ -178,6 +178,24 @@ private fun CardPaymentSection(state: NewOrderUiState, viewModel: NewOrderViewMo
         Text(it, style = PosTextStyles.bodySmallMedium, color = PosColors.Warning500)
         Spacer(Modifier.height(Spacing.sm))
     }
+    // Only ever shown when the last attempt failed specifically because the
+    // provider isn't configured (not a real decline) — see chargeCard()'s
+    // own comment on that distinction.
+    if (state.cardChargeSdkNotConfigured) {
+        Text(
+            "No real card terminal is set up yet. You can record this as paid by card without it, or try again once it's configured.",
+            style = PosTextStyles.bodyXSmallRegular,
+            color = PosColors.TextSecondary,
+        )
+        Spacer(Modifier.height(Spacing.xs))
+        FlowSecondaryButton(
+            text = "Record as Card (manual)",
+            onClick = viewModel::submitManualCardPayment,
+            enabled = !state.isSubmitting,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(Spacing.sm))
+    }
     FlowPrimaryButton(
         text = if (state.isSubmitting) "Submitting…" else "Charge ${state.total.asCurrency()}",
         onClick = viewModel::chargeCard,
