@@ -72,12 +72,14 @@ fun AppTextField(
                 VisualTransformation.None
             },
             keyboardOptions = KeyboardOptions(
-                keyboardType = if (isPassword) KeyboardType.Password else keyboardType,
+                // isPassword defaults to the Password keyboard type, but a caller passing
+                // something more specific (e.g. NumberPassword for a PIN) wins.
+                keyboardType = if (isPassword && keyboardType == KeyboardType.Text) KeyboardType.Password else keyboardType,
             ),
             shape = PosNovaShapes.medium,
             textStyle = PosTextStyles.bodyMediumRegular,
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = PosColors.Primary500,
+                focusedBorderColor = PosColors.Blue500,
                 unfocusedBorderColor = PosColors.Neutral5,
                 errorBorderColor = PosColors.Warning500,
             ),

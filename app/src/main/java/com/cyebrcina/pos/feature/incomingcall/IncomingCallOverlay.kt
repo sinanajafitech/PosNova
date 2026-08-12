@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +31,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.cyebrcina.pos.core.components.AppTextField
 import com.cyebrcina.pos.core.theme.PosColors
 import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
@@ -96,26 +96,25 @@ fun IncomingCallOverlay(viewModel: IncomingCallViewModel = hiltViewModel(), onTa
                         Text(current.address ?: "—", style = PosTextStyles.bodyMediumSemibold, color = PosColors.Neutral13)
                     }
                 } else {
-                    OutlinedTextField(
+                    AppTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = { Text("Name") },
-                        singleLine = true,
+                        label = "Name",
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(Modifier.height(Spacing.sm))
-                    OutlinedTextField(
+                    AppTextField(
                         value = address,
                         onValueChange = { address = it },
-                        label = { Text("Address") },
+                        label = "Address",
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(Modifier.height(Spacing.sm))
-                    OutlinedTextField(
+                    AppTextField(
                         value = notes,
                         onValueChange = { notes = it },
-                        label = { Text("Notes") },
-                        placeholder = { Text("Usual order, delivery notes, etc.") },
+                        label = "Notes",
+                        placeholder = "Usual order, delivery notes, etc.",
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }

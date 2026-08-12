@@ -32,8 +32,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cyebrcina.pos.core.components.AppCard
 import com.cyebrcina.pos.core.components.ConfirmDialog
 import com.cyebrcina.pos.core.components.PosTopBar
-import com.cyebrcina.pos.core.components.PrimaryButton
-import com.cyebrcina.pos.core.components.SecondaryButton
+import com.cyebrcina.pos.feature.order.create.FlowPrimaryButton
+import com.cyebrcina.pos.feature.order.create.FlowSecondaryButton
 import com.cyebrcina.pos.core.theme.PosColors
 import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
@@ -107,15 +107,15 @@ fun OrderDetailScreen(
 
             Row(modifier = Modifier.fillMaxWidth().padding(Spacing.sm), horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 if (state.isPending) {
-                    SecondaryButton(text = "Reject", onClick = viewModel::onRejectRequested, modifier = Modifier.weight(1f))
-                    PrimaryButton(
+                    FlowSecondaryButton(text = "Reject", onClick = viewModel::onRejectRequested, modifier = Modifier.weight(1f))
+                    FlowPrimaryButton(
                         text = "Accept & Print",
                         onClick = viewModel::accept,
                         loading = state.isProcessing,
                         modifier = Modifier.weight(1f),
                     )
                 } else {
-                    SecondaryButton(
+                    FlowSecondaryButton(
                         text = "Reprint Receipt + Ticket",
                         onClick = viewModel::reprint,
                         loading = state.printJobState == PrintJobState.PRINTING,
@@ -161,7 +161,7 @@ private fun OrderSummaryCard(order: DeviceOrder) {
         }
         order.tableLabel?.let {
             Spacer(Modifier.height(Spacing.xxxs))
-            Text("Table $it", style = PosTextStyles.bodySmallSemibold, color = PosColors.Primary500)
+            Text("Table $it", style = PosTextStyles.bodySmallSemibold, color = PosColors.Blue500)
         }
         order.estimatedTime?.let {
             Spacer(Modifier.height(Spacing.xxxs))
@@ -239,10 +239,10 @@ private fun TakePaymentCard(
         Text("Take Payment", style = PosTextStyles.h6, color = PosColors.Neutral12)
         Spacer(Modifier.height(Spacing.xxs))
         when (terminalStatus) {
-            TerminalStatus.AWAITING_CARD -> Text("Present, tap, or insert card", style = PosTextStyles.bodySmallMedium, color = PosColors.Primary500)
+            TerminalStatus.AWAITING_CARD -> Text("Present, tap, or insert card", style = PosTextStyles.bodySmallMedium, color = PosColors.Blue500)
             TerminalStatus.PROCESSING -> {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
-                    CircularProgressIndicator(modifier = Modifier.height(16.dp), strokeWidth = 2.dp, color = PosColors.Primary500)
+                    CircularProgressIndicator(modifier = Modifier.height(16.dp), strokeWidth = 2.dp, color = PosColors.Blue500)
                     Text("Processing…", style = PosTextStyles.bodySmallMedium, color = PosColors.Neutral9)
                 }
             }
@@ -254,16 +254,16 @@ private fun TakePaymentCard(
         }
         Spacer(Modifier.height(Spacing.xs))
         if (isCharging) {
-            SecondaryButton(text = "Cancel", onClick = onCancel, modifier = Modifier.fillMaxWidth())
+            FlowSecondaryButton(text = "Cancel", onClick = onCancel, modifier = Modifier.fillMaxWidth())
         } else {
-            PrimaryButton(
+            FlowPrimaryButton(
                 text = "Charge Card",
                 onClick = onCharge,
                 modifier = Modifier.fillMaxWidth(),
                 leadingIcon = { Icon(Icons.Filled.CreditCard, contentDescription = null) },
             )
             Spacer(Modifier.height(Spacing.xxs))
-            SecondaryButton(
+            FlowSecondaryButton(
                 text = "Show Payment QR",
                 onClick = onShowPaymentQr,
                 loading = isLoadingQr,
@@ -303,7 +303,7 @@ private fun PaymentQrDialog(state: PaymentQrState, onDismiss: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(Spacing.md))
-                SecondaryButton(text = "Close", onClick = onDismiss, modifier = Modifier.fillMaxWidth())
+                FlowSecondaryButton(text = "Close", onClick = onDismiss, modifier = Modifier.fillMaxWidth())
             }
         }
     }

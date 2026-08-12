@@ -35,12 +35,11 @@ import com.cyebrcina.pos.core.theme.Spacing
 val PillShape = RoundedCornerShape(percent = 50)
 
 /**
- * The New Order / Choose Table / Payment Order screens use a blue (#2D71F7) primary accent for
- * their CTAs, distinct from the app's global teal brand button ([com.cyebrcina.pos.core.components.PrimaryButton]) —
- * this matches the Blue-DPOP scale that recurs across pricing/selection state in this specific
- * screen set. The Figma button instances didn't expose an inline fill color for capture (likely a
- * shared fill style rather than inline paint), so the exact bg is inferred from the consistent
- * white-on-dark button label pattern rather than a captured hex value.
+ * The app's standard action button — blue (#2D71F7), full pill, 54dp — used everywhere except
+ * the pre-login auth screens (Splash/Login keep the separate teal brand color as a deliberate
+ * "you're outside the till flow yet" cue; see [com.cyebrcina.pos.core.components.PrimaryButton]).
+ * Originally introduced for New Order/Choose Table/Payment specifically (hence "Flow"), since
+ * broadened to every screen for one consistent design language across the app.
  */
 @Composable
 fun FlowPrimaryButton(
@@ -77,17 +76,26 @@ fun FlowSecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    loading: Boolean = false,
+    leadingIcon: @Composable (() -> Unit)? = null,
 ) {
     OutlinedButton(
         onClick = onClick,
         modifier = modifier.height(54.dp),
-        enabled = enabled,
+        enabled = enabled && !loading,
         shape = PillShape,
         border = BorderStroke(1.dp, PosColors.Blue500),
         colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = PosColors.Blue500),
         contentPadding = PaddingValues(horizontal = Spacing.lg),
     ) {
-        Text(text, style = PosTextStyles.bodyMediumSemibold, color = PosColors.Blue500)
+        if (loading) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = PosColors.Blue500)
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
+                leadingIcon?.invoke()
+                Text(text, style = PosTextStyles.bodyMediumSemibold, color = PosColors.Blue500)
+            }
+        }
     }
 }
 

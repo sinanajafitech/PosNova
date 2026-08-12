@@ -24,6 +24,8 @@ fun ConfirmDialog(
                 text = confirmLabel,
                 onClick = onConfirm,
                 size = AppButtonSize.MEDIUM,
+                color = PosColors.Blue500,
+                disabledColor = PosColors.Blue200,
             )
         },
         dismissButton = {
@@ -31,6 +33,7 @@ fun ConfirmDialog(
                 text = "Cancel",
                 onClick = onDismiss,
                 size = AppButtonSize.MEDIUM,
+                color = PosColors.Blue500,
             )
         },
     )

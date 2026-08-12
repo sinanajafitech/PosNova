@@ -135,7 +135,7 @@ private fun ProductRow(product: MenuProduct) {
                 }
             }
             if (product.sizes.isEmpty()) {
-                Text(product.price.asCurrency(), style = PosTextStyles.bodySmallSemibold, color = PosColors.Primary500)
+                Text(product.price.asCurrency(), style = PosTextStyles.bodySmallSemibold, color = PosColors.Blue500)
             }
         }
     }
@@ -159,7 +159,7 @@ private fun AddOnRow(addOn: MenuAddOn) {
     AppCard(modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(addOn.name, style = PosTextStyles.bodySmallMedium, color = PosColors.Neutral12)
-            Text(addOn.price.asCurrency(), style = PosTextStyles.bodySmallSemibold, color = PosColors.Primary500)
+            Text(addOn.price.asCurrency(), style = PosTextStyles.bodySmallSemibold, color = PosColors.Blue500)
         }
     }
 }

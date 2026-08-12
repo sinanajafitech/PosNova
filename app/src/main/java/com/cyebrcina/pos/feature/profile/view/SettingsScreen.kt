@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
@@ -32,7 +31,6 @@ import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -48,15 +46,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cyebrcina.pos.core.components.AppCard
+import com.cyebrcina.pos.core.components.AppTextField
 import com.cyebrcina.pos.core.components.BadgeTone
 import com.cyebrcina.pos.core.components.PosTopBar
-import com.cyebrcina.pos.core.components.SecondaryButton
+import com.cyebrcina.pos.feature.order.create.FlowSecondaryButton
 import com.cyebrcina.pos.core.components.StatusBadge
 import com.cyebrcina.pos.core.theme.PosColors
 import com.cyebrcina.pos.core.theme.PosNovaShapes
@@ -106,7 +104,7 @@ fun SettingsScreen(
                         checked = state.acceptingOrders == true,
                         onCheckedChange = { viewModel.toggleAcceptingOrders() },
                         enabled = !state.isTogglingStatus && state.acceptingOrders != null,
-                        colors = SwitchDefaults.colors(checkedTrackColor = PosColors.Primary500),
+                        colors = SwitchDefaults.colors(checkedTrackColor = PosColors.Blue500),
                     )
                 }
             }
@@ -154,14 +152,14 @@ fun SettingsScreen(
 
                 Spacer(Modifier.height(Spacing.xs))
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                    SecondaryButton(
+                    FlowSecondaryButton(
                         text = "Test Print",
                         onClick = viewModel::testPrint,
                         loading = state.isTestPrinting,
                         modifier = Modifier.weight(1f),
                         leadingIcon = { Icon(Icons.Filled.Print, contentDescription = null) },
                     )
-                    SecondaryButton(text = "Open Cash Drawer", onClick = viewModel::openCashDrawer, modifier = Modifier.weight(1f))
+                    FlowSecondaryButton(text = "Open Cash Drawer", onClick = viewModel::openCashDrawer, modifier = Modifier.weight(1f))
                 }
                 state.testPrintError?.let { message ->
                     Spacer(Modifier.height(Spacing.xxs))
@@ -193,7 +191,7 @@ fun SettingsScreen(
             }
 
             Spacer(Modifier.height(Spacing.lg))
-            SecondaryButton(
+            FlowSecondaryButton(
                 text = "Log Out",
                 onClick = { viewModel.logout(); onLoggedOut() },
                 modifier = Modifier.fillMaxWidth(),
@@ -210,10 +208,10 @@ private fun PrinterCard(printer: DiscoveredPrinter, selected: Boolean, onClick: 
         modifier = Modifier
             .fillMaxWidth()
             .clip(PosNovaShapes.medium)
-            .background(if (selected) PosColors.Primary50 else PosColors.Neutral3)
+            .background(if (selected) PosColors.Blue50 else PosColors.Neutral3)
             .border(
                 width = if (selected) 1.5.dp else 1.dp,
-                color = if (selected) PosColors.Primary500 else PosColors.Neutral4,
+                color = if (selected) PosColors.Blue500 else PosColors.Neutral4,
                 shape = PosNovaShapes.medium,
             )
             .clickable(onClick = onClick)
@@ -228,7 +226,7 @@ private fun PrinterCard(printer: DiscoveredPrinter, selected: Boolean, onClick: 
                 PrinterConnection.BuiltIn -> Icons.Default.Print
             },
             contentDescription = null,
-            tint = if (selected) PosColors.Primary500 else PosColors.Neutral7,
+            tint = if (selected) PosColors.Blue500 else PosColors.Neutral7,
             modifier = Modifier.padding(end = Spacing.xs),
         )
         Column(Modifier.weight(1f)) {
@@ -242,7 +240,7 @@ private fun PrinterCard(printer: DiscoveredPrinter, selected: Boolean, onClick: 
             Text(detail, style = PosTextStyles.bodyXSmallRegular, color = PosColors.Neutral7)
         }
         if (selected) {
-            Icon(Icons.Default.CheckCircle, contentDescription = "Selected", tint = PosColors.Primary500)
+            Icon(Icons.Default.CheckCircle, contentDescription = "Selected", tint = PosColors.Blue500)
         }
     }
 }
@@ -286,16 +284,15 @@ private fun StaffClockSection(
         )
         Spacer(Modifier.height(Spacing.sm))
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            OutlinedTextField(
+            AppTextField(
                 value = pin,
                 onValueChange = { pin = it.filter(Char::isDigit).take(8) },
-                label = { Text("PIN") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                label = "PIN",
+                isPassword = true,
+                keyboardType = KeyboardType.NumberPassword,
                 modifier = Modifier.weight(1f),
             )
-            SecondaryButton(
+            FlowSecondaryButton(
                 text = "Clock In / Out",
                 onClick = { onClock(pin); pin = "" },
                 loading = isClocking,
@@ -361,7 +358,7 @@ private fun KitchenPrinterSection(
                     enabled = checked
                     onSave(currentSettings(overrideEnabled = checked))
                 },
-                colors = SwitchDefaults.colors(checkedTrackColor = PosColors.Primary500),
+                colors = SwitchDefaults.colors(checkedTrackColor = PosColors.Blue500),
             )
         }
 
@@ -384,20 +381,18 @@ private fun KitchenPrinterSection(
             when (connectionType) {
                 KitchenPrinterConnectionType.NETWORK -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                        OutlinedTextField(
+                        AppTextField(
                             value = host,
                             onValueChange = { host = it },
-                            label = { Text("Printer IP") },
-                            placeholder = { Text("192.168.1.50") },
-                            singleLine = true,
+                            label = "Printer IP",
+                            placeholder = "192.168.1.50",
                             modifier = Modifier.weight(1f),
                         )
-                        OutlinedTextField(
+                        AppTextField(
                             value = port,
                             onValueChange = { port = it.filter(Char::isDigit) },
-                            label = { Text("Port") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            label = "Port",
+                            keyboardType = KeyboardType.Number,
                             modifier = Modifier.width(96.dp),
                         )
                     }
@@ -428,19 +423,19 @@ private fun KitchenPrinterSection(
                                 Text(bluetoothAddress, style = PosTextStyles.bodyXSmallRegular, color = PosColors.Neutral7)
                             }
                         }
-                        Text("Choose", style = PosTextStyles.bodyXSmallSemibold, color = PosColors.Primary500)
+                        Text("Choose", style = PosTextStyles.bodyXSmallSemibold, color = PosColors.Blue500)
                     }
                 }
             }
 
             Spacer(Modifier.height(Spacing.xs))
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                SecondaryButton(
+                FlowSecondaryButton(
                     text = "Save",
                     onClick = { onSave(currentSettings()) },
                     modifier = Modifier.weight(1f),
                 )
-                SecondaryButton(
+                FlowSecondaryButton(
                     text = "Test Print",
                     onClick = onTestPrint,
                     loading = isTestPrinting,
@@ -473,7 +468,7 @@ private fun ConnectionTypeChip(label: String, selected: Boolean, onClick: () -> 
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(percent = 50))
-            .background(if (selected) PosColors.Primary500 else PosColors.Neutral3)
+            .background(if (selected) PosColors.Blue500 else PosColors.Neutral3)
             .clickable(onClick = onClick)
             .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
     ) {
@@ -615,11 +610,11 @@ private fun CardTerminalSection(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(PosNovaShapes.medium)
-                .background(PosColors.Primary50)
+                .background(PosColors.Blue50)
                 .padding(Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Default.CreditCard, contentDescription = null, tint = PosColors.Primary500, modifier = Modifier.padding(end = Spacing.xs))
+            Icon(Icons.Default.CreditCard, contentDescription = null, tint = PosColors.Blue500, modifier = Modifier.padding(end = Spacing.xs))
             Column(Modifier.weight(1f)) {
                 Text(selectedProvider.displayName(), style = PosTextStyles.bodySmallMedium, color = PosColors.Neutral12)
                 Text("Set from Admin → Settings → Card Terminal", style = PosTextStyles.bodyXSmallRegular, color = PosColors.Neutral7)
@@ -627,7 +622,7 @@ private fun CardTerminalSection(
             TerminalStatusBadge(status)
         }
         Spacer(Modifier.height(Spacing.sm))
-        SecondaryButton(
+        FlowSecondaryButton(
             text = "Connect",
             onClick = onConnect,
             loading = isConnecting,
