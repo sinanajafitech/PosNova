@@ -33,6 +33,10 @@ data class CreateOrderRequest(
     // Order" button — links the order back to that call on Admin's Calls
     // page. Validated server-side; an invalid id is silently dropped.
     val phoneCallLogId: String? = null,
+    // Whoever's currently PIN-clocked-in on this till, if any — see
+    // CurrentStaffStore. Validated server-side; an invalid/stale id is
+    // silently dropped rather than failing the order.
+    val staffId: String? = null,
     val notes: String? = null,
     val items: List<CreateOrderItemRequest>,
     val payment: CreateOrderPayment,

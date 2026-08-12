@@ -1,6 +1,7 @@
 package com.cyebrcina.pos.feature.report
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +47,7 @@ import com.cyebrcina.pos.core.theme.Spacing
 import com.cyebrcina.pos.core.util.asCurrency
 import com.cyebrcina.pos.data.remote.model.PaymentMethodBreakdown
 import com.cyebrcina.pos.data.remote.model.ZReport
+import com.cyebrcina.pos.data.repository.ReportChannel
 import com.cyebrcina.pos.feature.order.create.FlowPrimaryButton
 import com.cyebrcina.pos.printer.model.PrintJobState
 import java.time.format.DateTimeFormatter
@@ -91,6 +93,16 @@ fun ReportScreen(viewModel: ReportViewModel = hiltViewModel()) {
                     )
                 }
             }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+            ) {
+                ChannelChip("All", state.channel == ReportChannel.ALL) { viewModel.setChannel(ReportChannel.ALL) }
+                ChannelChip("Online", state.channel == ReportChannel.ONLINE) { viewModel.setChannel(ReportChannel.ONLINE) }
+                ChannelChip("Till", state.channel == ReportChannel.TILL) { viewModel.setChannel(ReportChannel.TILL) }
+            }
+            Spacer(Modifier.height(Spacing.sm))
 
             if (report == null) {
                 if (state.errorMessage != null) {
@@ -167,6 +179,21 @@ fun ReportScreen(viewModel: ReportViewModel = hiltViewModel()) {
                 }
             }
         }
+    }
+}
+
+/** ALL / ONLINE / TILL — the "two versions" split requested for closing out online vs till
+ * sales separately, plus the original combined view. */
+@Composable
+private fun ChannelChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(percent = 50))
+            .background(if (selected) PosColors.Blue500 else PosColors.SurfaceAlt)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+    ) {
+        Text(label, style = PosTextStyles.bodyXSmallSemibold, color = if (selected) PosColors.White else PosColors.Neutral12)
     }
 }
 

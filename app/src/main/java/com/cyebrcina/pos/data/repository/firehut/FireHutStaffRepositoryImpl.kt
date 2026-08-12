@@ -2,24 +2,22 @@ package com.cyebrcina.pos.data.repository.firehut
 
 import com.cyebrcina.pos.data.remote.FireHutDeviceApi
 import com.cyebrcina.pos.data.remote.errorMessageOrDefault
-import com.cyebrcina.pos.data.remote.model.ZReport
-import com.cyebrcina.pos.data.repository.ReportChannel
-import com.cyebrcina.pos.data.repository.ReportRepository
+import com.cyebrcina.pos.data.remote.model.ClockRequest
+import com.cyebrcina.pos.data.remote.model.ClockResponse
+import com.cyebrcina.pos.data.repository.StaffRepository
 import java.io.IOException
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
 
 @Singleton
-class FireHutReportRepositoryImpl @Inject constructor(
+class FireHutStaffRepositoryImpl @Inject constructor(
     private val api: FireHutDeviceApi,
     private val json: Json,
-) : ReportRepository {
+) : StaffRepository {
 
-    override suspend fun getZReport(date: LocalDate?, channel: ReportChannel): Result<ZReport> = runCatching {
-        val response = api.zReport(date?.format(DateTimeFormatter.ISO_LOCAL_DATE), channel.name)
+    override suspend fun clock(pin: String): Result<ClockResponse> = runCatching {
+        val response = api.clockStaff(ClockRequest(pin))
         if (!response.isSuccessful) throw IllegalStateException(response.errorMessageOrDefault(json))
         response.body() ?: throw IllegalStateException("Empty response")
     }.recoverCatching { cause ->

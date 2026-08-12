@@ -34,6 +34,9 @@ object MainRoutes {
 
     const val CALLS = "main/calls"
 
+    /** Not a [MainSection] tab — reached via a button in Settings, like ORDER_DETAIL. */
+    const val REGISTER = "main/register"
+
     /** Nested graph for the till order-taking flow — see [com.cyebrcina.pos.core.navigation.NewOrderRoutes]. */
     const val NEW_ORDER_GRAPH = "main/new-order"
 

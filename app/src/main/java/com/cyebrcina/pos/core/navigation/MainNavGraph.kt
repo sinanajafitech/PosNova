@@ -24,6 +24,7 @@ import com.cyebrcina.pos.feature.order.detail.OrderDetailScreen
 import com.cyebrcina.pos.feature.order.history.OrderHistoryScreen
 import com.cyebrcina.pos.feature.order.list.OrderQueueScreen
 import com.cyebrcina.pos.feature.profile.view.SettingsScreen
+import com.cyebrcina.pos.feature.register.RegisterScreen
 import com.cyebrcina.pos.feature.report.ReportScreen
 import com.cyebrcina.pos.feature.incomingcall.IncomingCallOverlay
 import com.cyebrcina.pos.feature.waitercall.WaiterCallOverlay
@@ -86,7 +87,15 @@ fun MainGraphHost(windowSizeClass: WindowSizeClass, onLoggedOut: () -> Unit) {
             }
             composable(MainRoutes.MENU) { MenuScreen() }
             composable(MainRoutes.REPORT) { ReportScreen() }
-            composable(MainRoutes.SETTINGS) { SettingsScreen(onLoggedOut = onLoggedOut) }
+            composable(MainRoutes.SETTINGS) {
+                SettingsScreen(
+                    onLoggedOut = onLoggedOut,
+                    onOpenRegister = { navController.navigate(MainRoutes.REGISTER) },
+                )
+            }
+            composable(MainRoutes.REGISTER) {
+                RegisterScreen(onBack = { navController.popBackStack() })
+            }
             composable(MainRoutes.TABLES) {
                 TablesScreen(
                     onNavigateToNewOrder = {

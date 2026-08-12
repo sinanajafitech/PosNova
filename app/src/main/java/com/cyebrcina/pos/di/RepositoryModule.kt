@@ -2,18 +2,22 @@ package com.cyebrcina.pos.di
 
 import com.cyebrcina.pos.data.repository.AuthRepository
 import com.cyebrcina.pos.data.repository.CallRepository
+import com.cyebrcina.pos.data.repository.CashRegisterRepository
 import com.cyebrcina.pos.data.repository.MenuRepository
 import com.cyebrcina.pos.data.repository.OrderRepository
 import com.cyebrcina.pos.data.repository.PhoneContactRepository
 import com.cyebrcina.pos.data.repository.ReportRepository
+import com.cyebrcina.pos.data.repository.StaffRepository
 import com.cyebrcina.pos.data.repository.StoreStatusRepository
 import com.cyebrcina.pos.data.repository.TableRepository
 import com.cyebrcina.pos.data.repository.firehut.FireHutAuthRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutCallRepositoryImpl
+import com.cyebrcina.pos.data.repository.firehut.FireHutCashRegisterRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutMenuRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutOrderRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutPhoneContactRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutReportRepositoryImpl
+import com.cyebrcina.pos.data.repository.firehut.FireHutStaffRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutStoreStatusRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutTableRepositoryImpl
 import dagger.Binds
@@ -58,4 +62,12 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindCallRepository(impl: FireHutCallRepositoryImpl): CallRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindStaffRepository(impl: FireHutStaffRepositoryImpl): StaffRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindCashRegisterRepository(impl: FireHutCashRegisterRepositoryImpl): CashRegisterRepository
 }

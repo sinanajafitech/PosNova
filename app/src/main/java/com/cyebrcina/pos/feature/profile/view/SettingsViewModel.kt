@@ -2,6 +2,8 @@ package com.cyebrcina.pos.feature.profile.view
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cyebrcina.pos.data.local.CurrentStaff
+import com.cyebrcina.pos.data.local.CurrentStaffStore
 import com.cyebrcina.pos.data.local.KitchenPrinterConnectionType
 import com.cyebrcina.pos.data.local.KitchenPrinterSettings
 import com.cyebrcina.pos.data.local.PrinterSettingsStore
@@ -9,6 +11,7 @@ import com.cyebrcina.pos.data.model.DeviceSession
 import com.cyebrcina.pos.data.remote.model.ReceiptPrefs
 import com.cyebrcina.pos.data.repository.AuthRepository
 import com.cyebrcina.pos.data.repository.OrderRepository
+import com.cyebrcina.pos.data.repository.StaffRepository
 import com.cyebrcina.pos.data.repository.StoreStatusRepository
 import com.cyebrcina.pos.payment.PaymentTerminalService
 import com.cyebrcina.pos.payment.model.PaymentProvider
@@ -48,6 +51,9 @@ data class SettingsUiState(
     val terminalStatus: TerminalStatus = TerminalStatus.DISCONNECTED,
     val isConnectingTerminal: Boolean = false,
     val terminalError: String? = null,
+    val currentStaff: CurrentStaff? = null,
+    val isClockingStaff: Boolean = false,
+    val staffClockError: String? = null,
 )
 
 private data class ExternalState(
@@ -72,6 +78,8 @@ private data class LocalFlags(
     val kitchenTestResult: String? = null,
     val isConnectingTerminal: Boolean = false,
     val terminalError: String? = null,
+    val isClockingStaff: Boolean = false,
+    val staffClockError: String? = null,
 )
 
 @HiltViewModel
@@ -83,6 +91,8 @@ class SettingsViewModel @Inject constructor(
     private val printerSettingsStore: PrinterSettingsStore,
     private val kitchenPrinterDispatcher: KitchenPrinterDispatcher,
     private val paymentTerminalService: PaymentTerminalService,
+    private val staffRepository: StaffRepository,
+    private val currentStaffStore: CurrentStaffStore,
 ) : ViewModel() {
 
     private val localFlags = MutableStateFlow(LocalFlags())
@@ -122,7 +132,8 @@ class SettingsViewModel @Inject constructor(
         terminalState,
         orderRepository.receiptPrefs,
         localFlags,
-    ) { external, terminal, receiptPrefs, local ->
+        currentStaffStore.currentStaff,
+    ) { external, terminal, receiptPrefs, local, currentStaff ->
         SettingsUiState(
             session = external.session,
             printerStatus = external.printerStatus,
@@ -140,6 +151,9 @@ class SettingsViewModel @Inject constructor(
             terminalStatus = terminal.status,
             isConnectingTerminal = local.isConnectingTerminal,
             terminalError = local.terminalError,
+            currentStaff = currentStaff,
+            isClockingStaff = local.isClockingStaff,
+            staffClockError = local.staffClockError,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
 
@@ -207,6 +221,26 @@ class SettingsViewModel @Inject constructor(
             paymentTerminalService.connect()
                 .onFailure { err -> localFlags.update { it.copy(terminalError = err.message) } }
             localFlags.update { it.copy(isConnectingTerminal = false) }
+        }
+    }
+
+    /** Identifies the staff member by PIN alone (no name/username step here either, same as
+     * Admin's kiosk) and toggles their shift — "in" updates the locally-remembered current
+     * staff so new orders from this till get attributed to them, "out" clears it. */
+    fun clockStaff(pin: String) {
+        viewModelScope.launch {
+            localFlags.update { it.copy(isClockingStaff = true, staffClockError = null) }
+            staffRepository.clock(pin)
+                .onSuccess { response ->
+                    val staff = response.staff
+                    if (response.action == "out" || staff == null) {
+                        currentStaffStore.setCurrentStaff(null)
+                    } else {
+                        currentStaffStore.setCurrentStaff(CurrentStaff(staff.id, staff.name))
+                    }
+                }
+                .onFailure { err -> localFlags.update { it.copy(staffClockError = err.message) } }
+            localFlags.update { it.copy(isClockingStaff = false) }
         }
     }
 

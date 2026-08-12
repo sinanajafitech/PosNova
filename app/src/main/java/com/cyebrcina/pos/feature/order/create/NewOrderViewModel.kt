@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.cyebrcina.pos.customerdisplay.CustomerDisplayManager
 import com.cyebrcina.pos.customerdisplay.CustomerDisplayLineItem
 import com.cyebrcina.pos.customerdisplay.CustomerDisplayState
+import com.cyebrcina.pos.data.local.CurrentStaffStore
 import com.cyebrcina.pos.data.model.DeviceSession
 import com.cyebrcina.pos.data.remote.model.CreateOrderItemRequest
 import com.cyebrcina.pos.data.remote.model.CreateOrderPayment
@@ -34,6 +35,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
@@ -115,6 +117,7 @@ class NewOrderViewModel @Inject constructor(
     private val heldOrdersStore: HeldOrdersStore,
     private val entryCoordinator: NewOrderEntryCoordinator,
     private val kitchenPrinterDispatcher: KitchenPrinterDispatcher,
+    private val currentStaffStore: CurrentStaffStore,
 ) : ViewModel() {
 
     private val session = MutableStateFlow<DeviceSession?>(null)
@@ -442,6 +445,7 @@ class NewOrderViewModel @Inject constructor(
                 customerName = state.customerName,
                 customerPhone = state.customerPhone,
                 phoneCallLogId = state.phoneCallLogId,
+                staffId = currentStaffStore.currentStaff.first()?.id,
                 items = state.cart.map { item ->
                     CreateOrderItemRequest(
                         productId = item.product.id,
@@ -488,6 +492,7 @@ class NewOrderViewModel @Inject constructor(
             customerName = state.customerName,
             customerPhone = state.customerPhone,
             phoneCallLogId = state.phoneCallLogId,
+            staffId = currentStaffStore.currentStaff.first()?.id,
             items = state.cart.map { item ->
                 CreateOrderItemRequest(
                     productId = item.product.id,

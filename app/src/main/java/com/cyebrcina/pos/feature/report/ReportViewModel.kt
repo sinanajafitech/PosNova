@@ -3,6 +3,7 @@ package com.cyebrcina.pos.feature.report
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cyebrcina.pos.data.remote.model.ZReport
+import com.cyebrcina.pos.data.repository.ReportChannel
 import com.cyebrcina.pos.data.repository.ReportRepository
 import com.cyebrcina.pos.printer.PrinterService
 import com.cyebrcina.pos.printer.ReceiptBuilder
@@ -23,6 +24,7 @@ data class DayPoint(val date: LocalDate, val report: ZReport?)
 
 data class ReportUiState(
     val date: LocalDate = LocalDate.now(),
+    val channel: ReportChannel = ReportChannel.ALL,
     val report: ZReport? = null,
     val previousDayReport: ZReport? = null,
     val last7Days: List<DayPoint> = emptyList(),
@@ -64,25 +66,34 @@ class ReportViewModel @Inject constructor(
         load()
     }
 
+    /** Switches between the combined report and the ALL/ONLINE/TILL split requested for closing
+     * out online vs till sales separately. */
+    fun setChannel(channel: ReportChannel) {
+        if (_uiState.value.channel == channel) return
+        _uiState.update { it.copy(channel = channel) }
+        load()
+    }
+
     private fun load() {
         val date = _uiState.value.date
+        val channel = _uiState.value.channel
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
-            reportRepository.getZReport(date)
+            reportRepository.getZReport(date, channel)
                 .onSuccess { report -> _uiState.update { it.copy(report = report, isLoading = false) } }
                 .onFailure { err -> _uiState.update { it.copy(isLoading = false, errorMessage = err.message) } }
 
             // Trend chip + 7-day chart both need neighbouring days — fetched in parallel rather
             // than blocking the main report on them.
             launch {
-                reportRepository.getZReport(date.minusDays(1))
+                reportRepository.getZReport(date.minusDays(1), channel)
                     .onSuccess { prev -> _uiState.update { it.copy(previousDayReport = prev) } }
             }
             launch {
                 val days = (6 downTo 0).map { offset -> date.minusDays(offset.toLong()) }
                 val points = days.map { day ->
-                    async { DayPoint(day, reportRepository.getZReport(day).getOrNull()) }
+                    async { DayPoint(day, reportRepository.getZReport(day, channel).getOrNull()) }
                 }.awaitAll()
                 _uiState.update { it.copy(last7Days = points) }
             }

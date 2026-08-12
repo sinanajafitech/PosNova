@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -48,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -61,6 +63,7 @@ import com.cyebrcina.pos.core.theme.PosColors
 import com.cyebrcina.pos.core.theme.PosNovaShapes
 import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
+import com.cyebrcina.pos.data.local.CurrentStaff
 import com.cyebrcina.pos.data.local.KitchenPrinterConnectionType
 import com.cyebrcina.pos.data.local.KitchenPrinterSettings
 import com.cyebrcina.pos.data.remote.model.ReceiptPrefs
@@ -73,6 +76,7 @@ import com.cyebrcina.pos.printer.model.PrinterStatus
 @Composable
 fun SettingsScreen(
     onLoggedOut: () -> Unit,
+    onOpenRegister: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -108,6 +112,22 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            Spacer(Modifier.height(Spacing.lg))
+            StaffClockSection(
+                currentStaff = state.currentStaff,
+                isClocking = state.isClockingStaff,
+                error = state.staffClockError,
+                onClock = viewModel::clockStaff,
+            )
+
+            Spacer(Modifier.height(Spacing.lg))
+            SecondaryButton(
+                text = "Cash Register",
+                onClick = onOpenRegister,
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = { Icon(Icons.Filled.AttachMoney, contentDescription = null) },
+            )
 
             Spacer(Modifier.height(Spacing.lg))
             Row(
@@ -248,6 +268,55 @@ private fun PrinterStatusBadge(status: PrinterStatus) {
         PrinterStatus.UNKNOWN -> "Unknown" to BadgeTone.NEUTRAL
     }
     StatusBadge(text = label, tone = tone)
+}
+
+/**
+ * PIN clock in/out for whoever's working this till — same StaffMember/PIN Admin's own
+ * clock-in kiosk uses. Toggles: entering a PIN clocks that staff member in if they weren't
+ * already, or out if they were (there's no separate name/username step, just like the kiosk).
+ * The "on shift" name shown here is a local convenience label for order attribution
+ * (Order.staffId); the real shift record lives server-side either way.
+ */
+@Composable
+private fun StaffClockSection(
+    currentStaff: CurrentStaff?,
+    isClocking: Boolean,
+    error: String?,
+    onClock: (pin: String) -> Unit,
+) {
+    var pin by remember { mutableStateOf("") }
+
+    Text("Staff", style = PosTextStyles.h6, color = PosColors.Neutral12)
+    Spacer(Modifier.height(Spacing.xxs))
+    AppCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            currentStaff?.let { "On shift: ${it.name}" } ?: "No staff clocked in on this till",
+            style = PosTextStyles.bodyMediumSemibold,
+            color = PosColors.Neutral12,
+        )
+        Spacer(Modifier.height(Spacing.sm))
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            OutlinedTextField(
+                value = pin,
+                onValueChange = { pin = it.filter(Char::isDigit).take(8) },
+                label = { Text("PIN") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                modifier = Modifier.weight(1f),
+            )
+            SecondaryButton(
+                text = "Clock In / Out",
+                onClick = { onClock(pin); pin = "" },
+                loading = isClocking,
+                enabled = pin.length in 4..8,
+            )
+        }
+        error?.let { message ->
+            Spacer(Modifier.height(Spacing.xxs))
+            Text(message, style = PosTextStyles.bodyXSmallMedium, color = PosColors.Warning500)
+        }
+    }
 }
 
 /**

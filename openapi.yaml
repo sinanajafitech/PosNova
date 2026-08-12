@@ -402,13 +402,20 @@ paths:
           in: query
           description: YYYY-MM-DD, server-local date. Defaults to today.
           schema: { type: string, format: date }
+        - name: channel
+          in: query
+          description: >-
+            ALL (default) is every order; ONLINE is website orders only;
+            TILL is till + Admin test orders only — the two versions
+            requested for closing out online vs till sales separately.
+          schema: { type: string, enum: [ALL, ONLINE, TILL] }
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ZReport' }
-        "400": { description: Invalid date }
+        "400": { description: Invalid date or channel }
         "401": { $ref: '#/components/responses/Unauthorized' }
 
   /api/device/tables:
@@ -472,6 +479,103 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/CallsResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /api/device/staff/clock:
+    post:
+      tags: [Device Staff]
+      summary: Clock a staff member in or out by PIN
+      description: >-
+        Toggles: closes the staff member's open shift if they have one,
+        otherwise opens a new one. Identical StaffClockEvent model Admin's
+        own clock-in kiosk uses, so Admin's Clock In/Out and Timesheets
+        pages see a till clock-in the same as one from the kiosk.
+        Rate-limited (10/min per IP) since a 4-8 digit PIN is brute-forceable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              properties:
+                pin: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffClockResponse' }
+        "400": { description: Invalid PIN format, or no matching request body }
+        "401": { description: Unauthorized, or incorrect PIN }
+        "429": { description: Too many attempts }
+
+  /api/device/register/current:
+    get:
+      tags: [Device Register]
+      summary: This till's currently open cash register session, if any
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CashRegisterSessionResponse' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /api/device/register/open:
+    post:
+      tags: [Device Register]
+      summary: Open this till's register for the shift with a counted starting float
+      description: >-
+        409s (with the existing session returned) if one's already open —
+        a till can only have one open register session at a time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [openingFloat]
+              properties:
+                openingFloat: { type: number }
+                staffId: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CashRegisterSessionResponse' }
+        "400": { description: openingFloat must be a non-negative number }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "409": { description: A register session is already open on this till }
+
+  /api/device/register/close:
+    post:
+      tags: [Device Register]
+      summary: Close this till's register with a physical cash count
+      description: >-
+        Computes expectedCash = opening float + this till's own TILL-source
+        CASH sales during the session window, minus any cash refunds given
+        back in that window — scoped to this specific device, so a
+        multi-till store's registers never bleed into each other.
+        variance = countedCash - expectedCash.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [countedCash]
+              properties:
+                countedCash: { type: number }
+                staffId: { type: string, nullable: true }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CashRegisterSessionResponse' }
+        "400": { description: countedCash invalid, or no open register session }
         "401": { $ref: '#/components/responses/Unauthorized' }
 
   # ---------------------------------------------------------------------
@@ -779,6 +883,7 @@ components:
       type: object
       properties:
         storeName: { type: string }
+        channel: { type: string, enum: [ALL, ONLINE, TILL] }
         date: { type: string, format: date }
         isToday: { type: boolean }
         orderCount: { type: integer }
@@ -895,6 +1000,40 @@ components:
         calls:
           type: array
           items: { $ref: '#/components/schemas/DeviceCall' }
+
+    StaffClockResponse:
+      type: object
+      required: [ok, action, staff]
+      properties:
+        ok: { type: boolean }
+        action: { type: string, enum: [in, out] }
+        staff:
+          type: object
+          required: [id, name]
+          properties:
+            id: { type: string }
+            name: { type: string }
+
+    CashRegisterSession:
+      type: object
+      required: [id, openingFloat, openedAt]
+      properties:
+        id: { type: string }
+        openingFloat: { type: number }
+        openedAt: { type: string, format: date-time }
+        openedByStaffName: { type: string, nullable: true }
+        closedAt: { type: string, format: date-time, nullable: true }
+        countedCash: { type: number, nullable: true }
+        expectedCash: { type: number, nullable: true }
+        variance: { type: number, nullable: true, description: countedCash - expectedCash }
+        closedByStaffName: { type: string, nullable: true }
+
+    CashRegisterSessionResponse:
+      type: object
+      properties:
+        session:
+          allOf: [{ $ref: '#/components/schemas/CashRegisterSession' }]
+          nullable: true
 
 x-realtime:
   description: >-
