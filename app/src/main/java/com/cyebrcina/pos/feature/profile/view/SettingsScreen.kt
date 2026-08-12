@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -76,7 +75,6 @@ import com.cyebrcina.pos.printer.model.PrinterStatus
 @Composable
 fun SettingsScreen(
     onLoggedOut: () -> Unit,
-    onOpenRegister: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -119,14 +117,6 @@ fun SettingsScreen(
                 isClocking = state.isClockingStaff,
                 error = state.staffClockError,
                 onClock = viewModel::clockStaff,
-            )
-
-            Spacer(Modifier.height(Spacing.lg))
-            SecondaryButton(
-                text = "Cash Register",
-                onClick = onOpenRegister,
-                modifier = Modifier.fillMaxWidth(),
-                leadingIcon = { Icon(Icons.Filled.AttachMoney, contentDescription = null) },
             )
 
             Spacer(Modifier.height(Spacing.lg))

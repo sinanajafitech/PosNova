@@ -1,19 +1,25 @@
 package com.cyebrcina.pos.feature.register
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.LocalAtm
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,13 +29,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.cyebrcina.pos.core.components.AppCard
+import com.cyebrcina.pos.core.components.AppTextField
 import com.cyebrcina.pos.core.components.PosTopBar
-import com.cyebrcina.pos.core.components.SecondaryButton
 import com.cyebrcina.pos.core.theme.PosColors
 import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
@@ -41,65 +50,69 @@ import com.cyebrcina.pos.feature.order.create.FlowPrimaryButton
 import kotlin.math.abs
 
 /**
- * Open the drawer for the shift with a counted starting float, or close it with a physical
- * cash count that gets reconciled against this till's own CASH sales since opening (see
- * RegisterViewModel / POST api/device/register/close). Reachable from Settings, not a
- * persistent tab, since it's a start/end-of-shift action rather than something used mid-shift.
+ * A top-level tab (like Tables/Calls), not tucked inside Settings — matches the rest of the
+ * "main POS" flow's visual language (OrderSuccessScreen's centered white card, FlowPrimaryButton,
+ * AppTextField) rather than Settings' plain utilitarian cards, since opening/closing the
+ * register is as central to a shift as taking an order.
  */
 @Composable
-fun RegisterScreen(onBack: () -> Unit, viewModel: RegisterViewModel = hiltViewModel()) {
+fun RegisterScreen(viewModel: RegisterViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    Scaffold(
-        topBar = { PosTopBar(title = "Cash Register", onBack = onBack, navIcon = Icons.AutoMirrored.Filled.ArrowBack) },
-    ) { padding ->
-        Column(
-            Modifier.fillMaxSize().padding(padding).padding(Spacing.sm).verticalScroll(rememberScrollState()),
-        ) {
-            state.error?.let { message ->
-                Text(
-                    message,
-                    style = PosTextStyles.bodySmallRegular,
-                    color = PosColors.Warning500,
-                    modifier = Modifier.padding(bottom = Spacing.sm),
-                )
-            }
+    Scaffold(topBar = { PosTopBar(title = "Cash Register") }) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding).background(PosColors.Surface), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                state.error?.let { message ->
+                    Text(
+                        message,
+                        style = PosTextStyles.bodySmallRegular,
+                        color = PosColors.Warning500,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(500.dp).padding(bottom = Spacing.sm),
+                    )
+                }
 
-            state.justClosed?.let { closed ->
-                ClosedSummaryCard(closed, onDismiss = viewModel::dismissClosedSummary)
-                Spacer(Modifier.height(Spacing.lg))
-            }
-
-            when {
-                state.session != null -> CloseRegisterCard(state.session!!, state.isSubmitting, onClose = viewModel::closeRegister)
-                !state.isLoading -> OpenRegisterCard(state.isSubmitting, onOpen = viewModel::openRegister)
+                when {
+                    state.justClosed != null -> ClosedCard(state.justClosed!!, onDismiss = viewModel::dismissClosedSummary)
+                    state.session != null -> OpenCard(state.session!!, state.isSubmitting, onClose = viewModel::closeRegister)
+                    !state.isLoading -> StartCard(state.isSubmitting, onOpen = viewModel::openRegister)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun OpenRegisterCard(isSubmitting: Boolean, onOpen: (Double) -> Unit) {
+private fun IconBadge(icon: ImageVector, tint: Color) {
+    Box(Modifier.height(100.dp).width(100.dp).clip(CircleShape).background(tint), contentAlignment = Alignment.Center) {
+        Icon(icon, contentDescription = null, tint = PosColors.White, modifier = Modifier.height(42.dp))
+    }
+}
+
+@Composable
+private fun StartCard(isSubmitting: Boolean, onOpen: (Double) -> Unit) {
     var floatAmount by remember { mutableStateOf("") }
 
-    Text("Open Register", style = PosTextStyles.h6, color = PosColors.Neutral12)
-    Spacer(Modifier.height(Spacing.xxs))
-    AppCard(modifier = Modifier.fillMaxWidth()) {
+    FlowCard {
+        IconBadge(Icons.Filled.LocalAtm, PosColors.Blue500)
+        Spacer(Modifier.height(Spacing.md))
+        Text("Open Register", style = PosTextStyles.h3, color = PosColors.Neutral13)
+        Spacer(Modifier.height(Spacing.xs))
         Text(
             "Count the starting cash in the drawer before the shift begins.",
-            style = PosTextStyles.bodySmallRegular,
-            color = PosColors.Neutral7,
+            style = PosTextStyles.bodyMediumMedium,
+            color = PosColors.TextSecondary,
+            textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(Spacing.sm))
-        OutlinedTextField(
+        Spacer(Modifier.height(Spacing.lg))
+        AppTextField(
             value = floatAmount,
-            onValueChange = { floatAmount = it.filter { c -> c.isDigit() || c == '.' } },
-            label = { Text("Starting float (£)") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth(),
+            onValueChange = { floatAmount = it },
+            label = "Starting Float",
+            placeholder = "0.00",
+            keyboardType = KeyboardType.Decimal,
         )
-        Spacer(Modifier.height(Spacing.sm))
+        Spacer(Modifier.height(Spacing.lg))
         FlowPrimaryButton(
             text = "Open Register",
             onClick = { floatAmount.toDoubleOrNull()?.let(onOpen) },
@@ -111,51 +124,42 @@ private fun OpenRegisterCard(isSubmitting: Boolean, onOpen: (Double) -> Unit) {
 }
 
 @Composable
-private fun CloseRegisterCard(session: CashRegisterSessionDto, isSubmitting: Boolean, onClose: (Double) -> Unit) {
+private fun OpenCard(session: CashRegisterSessionDto, isSubmitting: Boolean, onClose: (Double) -> Unit) {
     var countedCash by remember { mutableStateOf("") }
 
-    Text("Register Open", style = PosTextStyles.h6, color = PosColors.Neutral12)
-    Spacer(Modifier.height(Spacing.xxs))
-    AppCard(modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column {
-                Text("Opening float", style = PosTextStyles.bodySmallRegular, color = PosColors.Neutral7)
-                Text(session.openingFloat.asCurrency(), style = PosTextStyles.bodyMediumSemibold, color = PosColors.Neutral12)
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text("Opened", style = PosTextStyles.bodySmallRegular, color = PosColors.Neutral7)
-                Text(
-                    session.openedAt.toInstantOrNull()?.asDateTime() ?: session.openedAt,
-                    style = PosTextStyles.bodyMediumSemibold,
-                    color = PosColors.Neutral12,
-                )
-            }
-        }
-        session.openedByStaffName?.let {
-            Spacer(Modifier.height(Spacing.xxs))
-            Text("Opened by $it", style = PosTextStyles.bodyXSmallRegular, color = PosColors.Neutral7)
-        }
-    }
-
-    Spacer(Modifier.height(Spacing.lg))
-    Text("Close Register", style = PosTextStyles.h6, color = PosColors.Neutral12)
-    Spacer(Modifier.height(Spacing.xxs))
-    AppCard(modifier = Modifier.fillMaxWidth()) {
+    FlowCard {
+        IconBadge(Icons.Filled.LocalAtm, PosColors.SuccessAccent)
+        Spacer(Modifier.height(Spacing.md))
+        Text("Register Open", style = PosTextStyles.h3, color = PosColors.Neutral13)
+        Spacer(Modifier.height(Spacing.xs))
         Text(
-            "Count the cash in the drawer now — it'll be checked against this till's own cash sales since opening.",
-            style = PosTextStyles.bodySmallRegular,
-            color = PosColors.Neutral7,
+            "Opened ${session.openedAt.toInstantOrNull()?.asDateTime() ?: session.openedAt}" +
+                (session.openedByStaffName?.let { " by $it" } ?: ""),
+            style = PosTextStyles.bodyMediumMedium,
+            color = PosColors.TextSecondary,
+            textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(Spacing.sm))
-        OutlinedTextField(
+        Spacer(Modifier.height(Spacing.lg))
+
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(PosColors.Surface).padding(Spacing.sm)) {
+            SummaryRow("Opening Float", session.openingFloat.asCurrency())
+        }
+        Spacer(Modifier.height(Spacing.lg))
+
+        AppTextField(
             value = countedCash,
-            onValueChange = { countedCash = it.filter { c -> c.isDigit() || c == '.' } },
-            label = { Text("Counted cash (£)") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth(),
+            onValueChange = { countedCash = it },
+            label = "Counted Cash",
+            placeholder = "0.00",
+            keyboardType = KeyboardType.Decimal,
         )
-        Spacer(Modifier.height(Spacing.sm))
+        Spacer(Modifier.height(Spacing.xs))
+        Text(
+            "Count the cash in the drawer now — it's checked against this till's own cash sales since opening.",
+            style = PosTextStyles.bodyXSmallRegular,
+            color = PosColors.TextSecondary,
+        )
+        Spacer(Modifier.height(Spacing.lg))
         FlowPrimaryButton(
             text = "Close Register",
             onClick = { countedCash.toDoubleOrNull()?.let(onClose) },
@@ -167,33 +171,71 @@ private fun CloseRegisterCard(session: CashRegisterSessionDto, isSubmitting: Boo
 }
 
 @Composable
-private fun ClosedSummaryCard(session: CashRegisterSessionDto, onDismiss: () -> Unit) {
+private fun ClosedCard(session: CashRegisterSessionDto, onDismiss: () -> Unit) {
     val variance = session.variance ?: 0.0
-    val varianceColor = if (abs(variance) < 0.01) PosColors.Success500 else PosColors.Warning500
+    val balanced = abs(variance) < 0.01
+    val accent = if (balanced) PosColors.SuccessAccent else PosColors.Warning500
 
-    AppCard(modifier = Modifier.fillMaxWidth()) {
-        Text("Register Closed", style = PosTextStyles.h6, color = PosColors.Neutral12)
-        Spacer(Modifier.height(Spacing.sm))
-        SummaryRow("Expected", session.expectedCash?.asCurrency() ?: "—")
-        SummaryRow("Counted", session.countedCash?.asCurrency() ?: "—")
-        SummaryRow(
-            when {
-                abs(variance) < 0.01 -> "Balanced"
-                variance > 0 -> "Over"
-                else -> "Short"
-            },
-            abs(variance).asCurrency(),
-            valueColor = varianceColor,
+    FlowCard {
+        IconBadge(if (balanced) Icons.Filled.Check else Icons.Filled.Warning, accent)
+        Spacer(Modifier.height(Spacing.md))
+        Text("Register Closed", style = PosTextStyles.h3, color = PosColors.Neutral13)
+        Spacer(Modifier.height(Spacing.xs))
+        Text(
+            if (balanced) "The drawer matches expected cash exactly." else "The drawer doesn't match expected cash — see below.",
+            style = PosTextStyles.bodyMediumMedium,
+            color = PosColors.TextSecondary,
+            textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(Spacing.sm))
-        SecondaryButton(text = "Dismiss", onClick = onDismiss, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(Spacing.lg))
+
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(PosColors.Surface).padding(Spacing.sm)) {
+            SummaryRow("Expected", session.expectedCash?.asCurrency() ?: "—")
+            Spacer(Modifier.height(Spacing.xs))
+            SummaryRow("Counted", session.countedCash?.asCurrency() ?: "—")
+            Spacer(Modifier.height(Spacing.xs))
+            HorizontalDivider(color = PosColors.Border)
+            Spacer(Modifier.height(Spacing.xs))
+            SummaryRow(
+                when {
+                    balanced -> "Balanced"
+                    variance > 0 -> "Over"
+                    else -> "Short"
+                },
+                abs(variance).asCurrency(),
+                emphasize = true,
+                valueColor = accent,
+            )
+        }
+
+        Spacer(Modifier.height(Spacing.lg))
+        FlowPrimaryButton(text = "Done", onClick = onDismiss, modifier = Modifier.fillMaxWidth())
     }
 }
 
+/** Matches OrderSuccessScreen's centered-white-card treatment. */
 @Composable
-private fun SummaryRow(label: String, value: String, valueColor: Color = PosColors.Neutral12) {
+private fun FlowCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(500.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(PosColors.White)
+            .padding(Spacing.xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        content = content,
+    )
+}
+
+@Composable
+private fun SummaryRow(
+    label: String,
+    value: String,
+    emphasize: Boolean = false,
+    valueColor: Color = PosColors.Neutral13,
+) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = PosTextStyles.bodySmallRegular, color = PosColors.Neutral7)
-        Text(value, style = PosTextStyles.bodyMediumSemibold, color = valueColor)
+        Text(label, style = if (emphasize) PosTextStyles.bodyMediumSemibold else PosTextStyles.bodySmallMedium, color = PosColors.Neutral13)
+        Text(value, style = if (emphasize) PosTextStyles.h6 else PosTextStyles.bodySmallSemibold, color = valueColor)
     }
 }

@@ -87,15 +87,8 @@ fun MainGraphHost(windowSizeClass: WindowSizeClass, onLoggedOut: () -> Unit) {
             }
             composable(MainRoutes.MENU) { MenuScreen() }
             composable(MainRoutes.REPORT) { ReportScreen() }
-            composable(MainRoutes.SETTINGS) {
-                SettingsScreen(
-                    onLoggedOut = onLoggedOut,
-                    onOpenRegister = { navController.navigate(MainRoutes.REGISTER) },
-                )
-            }
-            composable(MainRoutes.REGISTER) {
-                RegisterScreen(onBack = { navController.popBackStack() })
-            }
+            composable(MainRoutes.SETTINGS) { SettingsScreen(onLoggedOut = onLoggedOut) }
+            composable(MainRoutes.REGISTER) { RegisterScreen() }
             composable(MainRoutes.TABLES) {
                 TablesScreen(
                     onNavigateToNewOrder = {
