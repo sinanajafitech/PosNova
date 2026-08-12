@@ -36,7 +36,7 @@ interface OrderRepository {
     /** NOT YET LIVE server-side — see BACKEND_CARD_PAYMENT_SPEC.md. Will fail (404) until then. */
     suspend fun chargeOrder(orderId: String, provider: String, amount: Double, chargeResult: CardChargeResult): Result<Unit>
 
-    /** NOT YET LIVE server-side — see BACKEND_ORDER_CREATE_SPEC.md. Will fail (404) until then. */
+    /** Real, live — submits a till-built order. */
     suspend fun createOrder(request: CreateOrderRequest): Result<DeviceOrder>
 
     /** Real, live — creates a scan-to-pay QR for an order's outstanding balance. */

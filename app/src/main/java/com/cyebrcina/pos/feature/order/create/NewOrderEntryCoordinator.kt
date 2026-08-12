@@ -7,6 +7,8 @@ import javax.inject.Singleton
 sealed interface NewOrderEntryIntent {
     data class StartAtTable(val table: String) : NewOrderEntryIntent
     data class ResumeHeldOrder(val heldOrderId: String) : NewOrderEntryIntent
+    /** "Take Order" tapped on the Incoming Call popup — see [com.cyebrcina.pos.feature.incomingcall.IncomingCallViewModel]. */
+    data class StartFromCall(val callerName: String?, val phone: String, val callLogId: String?) : NewOrderEntryIntent
 }
 
 /**

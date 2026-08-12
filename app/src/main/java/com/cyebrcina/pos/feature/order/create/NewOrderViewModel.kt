@@ -43,9 +43,8 @@ import kotlinx.coroutines.launch
 enum class TillPaymentMethod { CASH, CARD, QR }
 
 /**
- * NOT YET LIVE server-side — see BACKEND_ORDER_CREATE_SPEC.md's "QR payment" section.
- * [order] is created unpaid; [link] is the scan-to-pay QR once fetched. Watched against
- * [OrderRepository.pendingOrders] for [DeviceOrder.paymentStatus] flipping to "PAID".
+ * Real, live. [order] is created unpaid; [link] is the scan-to-pay QR once fetched. Watched
+ * against [OrderRepository.pendingOrders] for [DeviceOrder.paymentStatus] flipping to "PAID".
  */
 data class QrPaymentState(
     val isGenerating: Boolean = false,
@@ -65,6 +64,8 @@ data class NewOrderUiState(
     val orderType: TillOrderType = TillOrderType.DINE_IN,
     val tableLabel: String? = null,
     val customerName: String = "Walk-in",
+    val customerPhone: String? = null,
+    val phoneCallLogId: String? = null,
     val guestCount: Int = 1,
     val hasStartedOrder: Boolean = false,
     val detailProduct: MenuProduct? = null,
@@ -123,6 +124,8 @@ class NewOrderViewModel @Inject constructor(
     private val orderType = MutableStateFlow(TillOrderType.DINE_IN)
     private val tableLabel = MutableStateFlow<String?>(null)
     private val customerName = MutableStateFlow("Walk-in")
+    private val customerPhone = MutableStateFlow<String?>(null)
+    private val phoneCallLogId = MutableStateFlow<String?>(null)
     private val guestCount = MutableStateFlow(1)
     private val hasStartedOrder = MutableStateFlow(false)
     private val detailProduct = MutableStateFlow<MenuProduct?>(null)
@@ -146,6 +149,8 @@ class NewOrderViewModel @Inject constructor(
         val orderType: TillOrderType,
         val tableLabel: String?,
         val customerName: String,
+        val customerPhone: String?,
+        val phoneCallLogId: String?,
         val guestCount: Int,
     )
 
@@ -197,7 +202,11 @@ class NewOrderViewModel @Inject constructor(
         combine(selectedCategoryId, searchQuery, cart, orderType, tableLabel, ::ConfigCore),
         customerName,
         guestCount,
-    ) { core, name, guests -> ConfigFlags(core.selectedCategoryId, core.searchQuery, core.cart, core.orderType, core.tableLabel, name, guests) }
+        customerPhone,
+        phoneCallLogId,
+    ) { core, name, guests, phone, callLogId ->
+        ConfigFlags(core.selectedCategoryId, core.searchQuery, core.cart, core.orderType, core.tableLabel, name, phone, callLogId, guests)
+    }
     private val uiFlags = combine(
         combine(hasStartedOrder, detailProduct, showChooseTable, isLoadingMenu, menuError, ::UiCore),
         isSubmitting,
@@ -223,6 +232,8 @@ class NewOrderViewModel @Inject constructor(
                 orderType = config.orderType,
                 tableLabel = config.tableLabel,
                 customerName = config.customerName,
+                customerPhone = config.customerPhone,
+                phoneCallLogId = config.phoneCallLogId,
                 guestCount = config.guestCount,
                 hasStartedOrder = ui.hasStartedOrder,
                 detailProduct = ui.detailProduct,
@@ -270,6 +281,7 @@ class NewOrderViewModel @Inject constructor(
         when (val intent = entryCoordinator.consumePending()) {
             is NewOrderEntryIntent.StartAtTable -> startOrder(TillOrderType.DINE_IN, "Walk-in", 1, intent.table)
             is NewOrderEntryIntent.ResumeHeldOrder -> resumeHeldOrder(intent.heldOrderId)
+            is NewOrderEntryIntent.StartFromCall -> startOrderFromCall(intent.callerName, intent.phone, intent.callLogId)
             null -> Unit
         }
 
@@ -307,6 +319,18 @@ class NewOrderViewModel @Inject constructor(
         customerName.value = name.ifBlank { "Walk-in" }
         guestCount.value = guests.coerceAtLeast(1)
         tableLabel.value = table
+        hasStartedOrder.value = true
+    }
+
+    /** "Take Order" from the Incoming Call popup — no table to pick, and the till never rings up
+     * DELIVERY itself, so this always starts a COLLECTION order. */
+    private fun startOrderFromCall(callerName: String?, phone: String, callLogId: String?) {
+        orderType.value = TillOrderType.COLLECTION
+        customerName.value = callerName?.takeIf { it.isNotBlank() } ?: "Phone Order"
+        customerPhone.value = phone
+        phoneCallLogId.value = callLogId
+        guestCount.value = 1
+        tableLabel.value = null
         hasStartedOrder.value = true
     }
 
@@ -405,11 +429,8 @@ class NewOrderViewModel @Inject constructor(
         }
     }
 
-    /**
-     * NOT YET LIVE server-side — see BACKEND_ORDER_CREATE_SPEC.md's "QR payment" section. Creates
-     * the order unpaid (`payment.method: "QR"`), then requests its scan-to-pay QR. Both calls will
-     * genuinely fail until the backend implements create-order and its QR extension.
-     */
+    /** Real, live. Creates the order unpaid (`payment.method: "QR"`), then requests its
+     * scan-to-pay QR. */
     fun generateQrPayment() {
         val state = uiState.value
         viewModelScope.launch {
@@ -419,6 +440,8 @@ class NewOrderViewModel @Inject constructor(
                 type = if (state.orderType == TillOrderType.DINE_IN) DeviceOrderType.DINE_IN else DeviceOrderType.COLLECTION,
                 tableLabel = state.tableLabel,
                 customerName = state.customerName,
+                customerPhone = state.customerPhone,
+                phoneCallLogId = state.phoneCallLogId,
                 items = state.cart.map { item ->
                     CreateOrderItemRequest(
                         productId = item.product.id,
@@ -463,6 +486,8 @@ class NewOrderViewModel @Inject constructor(
             type = if (state.orderType == TillOrderType.DINE_IN) DeviceOrderType.DINE_IN else DeviceOrderType.COLLECTION,
             tableLabel = state.tableLabel,
             customerName = state.customerName,
+            customerPhone = state.customerPhone,
+            phoneCallLogId = state.phoneCallLogId,
             items = state.cart.map { item ->
                 CreateOrderItemRequest(
                     productId = item.product.id,
@@ -530,6 +555,8 @@ class NewOrderViewModel @Inject constructor(
                 orderType = state.orderType,
                 tableLabel = state.tableLabel,
                 customerName = state.customerName,
+                customerPhone = state.customerPhone,
+                phoneCallLogId = state.phoneCallLogId,
                 guestCount = state.guestCount,
                 cart = state.cart,
             ),
@@ -543,6 +570,8 @@ class NewOrderViewModel @Inject constructor(
         orderType.value = held.orderType
         tableLabel.value = held.tableLabel
         customerName.value = held.customerName
+        customerPhone.value = held.customerPhone
+        phoneCallLogId.value = held.phoneCallLogId
         guestCount.value = held.guestCount
         hasStartedOrder.value = true
     }
@@ -553,6 +582,8 @@ class NewOrderViewModel @Inject constructor(
         hasStartedOrder.value = false
         tableLabel.value = null
         customerName.value = "Walk-in"
+        customerPhone.value = null
+        phoneCallLogId.value = null
         guestCount.value = 1
         orderType.value = TillOrderType.DINE_IN
         paymentMethod.value = TillPaymentMethod.CASH

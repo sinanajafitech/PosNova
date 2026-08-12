@@ -839,6 +839,7 @@ components:
         address: { type: string, nullable: true }
         customerId: { type: string, nullable: true }
         contactId: { type: string, nullable: true }
+        callLogId: { type: string, nullable: true, description: The PhoneCallLog row this call was recorded as }
         isKnown: { type: boolean }
         receivedAt: { type: string, format: date-time }
 

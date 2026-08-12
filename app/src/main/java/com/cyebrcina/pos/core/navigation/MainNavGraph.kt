@@ -48,7 +48,7 @@ fun MainGraphHost(windowSizeClass: WindowSizeClass, onLoggedOut: () -> Unit) {
     // tab staff are on, and survives tab switches since it's scoped to this composable's own
     // lifetime rather than any one screen's.
     WaiterCallOverlay()
-    IncomingCallOverlay()
+    IncomingCallOverlay(onTakeOrder = { navController.navigate(MainRoutes.NEW_ORDER_GRAPH) })
 
     MainScaffold(
         windowSizeClass = windowSizeClass,

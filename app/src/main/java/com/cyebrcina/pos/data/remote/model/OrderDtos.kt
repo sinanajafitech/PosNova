@@ -32,11 +32,8 @@ data class DeviceOrder(
     val itemsSubtotal: Double,
     val otherCharges: Double,
     val total: Double,
-    /**
-     * NOT YET LIVE server-side — see BACKEND_ORDER_CREATE_SPEC.md's "QR payment" section. Proposed
-     * "PENDING" | "PAID" | "FAILED" field so the till can tell whether a QR-created order has
-     * actually been paid yet. Null on every order type until the server implements this.
-     */
+    /** "PENDING" | "PAID" | "FAILED" — how a QR-created order's payment stands. Null for any
+     * order type that isn't QR-paid (its payment is settled by the time the order exists). */
     val paymentStatus: String? = null,
 )
 

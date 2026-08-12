@@ -15,6 +15,8 @@ data class HeldOrder(
     val orderType: TillOrderType,
     val tableLabel: String?,
     val customerName: String,
+    val customerPhone: String? = null,
+    val phoneCallLogId: String? = null,
     val guestCount: Int,
     val cart: List<CartItem>,
     val heldAt: Instant = Instant.now(),

@@ -2,11 +2,7 @@ package com.cyebrcina.pos.data.remote.model
 
 import kotlinx.serialization.Serializable
 
-/**
- * NOT YET IMPLEMENTED SERVER-SIDE — see BACKEND_ORDER_CREATE_SPEC.md at repo root. Exists so the
- * Android client is ready the moment `POST /api/device/orders` is added to the real backend;
- * until then, calling it will genuinely 404.
- */
+/** Real, live — `POST /api/device/orders` on the real backend. */
 @Serializable
 data class CreateOrderItemRequest(
     val productId: String,
@@ -33,6 +29,10 @@ data class CreateOrderRequest(
     val tableLabel: String? = null,
     val customerName: String,
     val customerPhone: String? = null,
+    // Set when this order was started from the Incoming Call popup's "Take
+    // Order" button — links the order back to that call on Admin's Calls
+    // page. Validated server-side; an invalid id is silently dropped.
+    val phoneCallLogId: String? = null,
     val notes: String? = null,
     val items: List<CreateOrderItemRequest>,
     val payment: CreateOrderPayment,

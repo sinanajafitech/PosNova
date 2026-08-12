@@ -47,7 +47,7 @@ private fun formatPhoneForDisplay(phone: String): String = if (phone.length == 1
  * right there so they're recognized on their next call — same capability as Admin's own popup.
  */
 @Composable
-fun IncomingCallOverlay(viewModel: IncomingCallViewModel = hiltViewModel()) {
+fun IncomingCallOverlay(viewModel: IncomingCallViewModel = hiltViewModel(), onTakeOrder: () -> Unit = {}) {
     val event by viewModel.current.collectAsStateWithLifecycle()
     val isSaving by viewModel.isSaving.collectAsStateWithLifecycle()
     val current = event ?: return
@@ -130,14 +130,24 @@ fun IncomingCallOverlay(viewModel: IncomingCallViewModel = hiltViewModel()) {
                     )
                     if (!current.isKnown) {
                         Spacer(Modifier.width(Spacing.sm))
-                        FlowPrimaryButton(
+                        FlowSecondaryButton(
                             text = "Save Customer",
                             onClick = { viewModel.saveContact(name, address, notes) },
                             modifier = Modifier.weight(1f),
-                            loading = isSaving,
+                            enabled = !isSaving,
                         )
                     }
                 }
+                Spacer(Modifier.height(Spacing.sm))
+                FlowPrimaryButton(
+                    text = "Take Order",
+                    onClick = {
+                        viewModel.takeOrder()
+                        onTakeOrder()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSaving,
+                )
             }
         }
     }

@@ -80,10 +80,7 @@ interface FireHutDeviceApi {
     @POST("api/device/orders/{id}/charge")
     suspend fun chargeOrder(@Path("id") orderId: String, @Body request: ChargeOrderRequest): Response<ChargeOrderResponse>
 
-    /**
-     * NOT YET LIVE — see BACKEND_ORDER_CREATE_SPEC.md. Submits a till-built order (menu items +
-     * payment already taken at the till). Will 404 until the backend implements this route.
-     */
+    /** Real, live. Submits a till-built order (menu items + payment already taken at the till). */
     @POST("api/device/orders")
     suspend fun createOrder(@Body request: CreateOrderRequest): Response<CreateOrderResponse>
 

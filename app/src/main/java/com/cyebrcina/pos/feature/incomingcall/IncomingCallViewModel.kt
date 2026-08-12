@@ -6,6 +6,8 @@ import com.cyebrcina.pos.core.util.IncomingCallAlertPlayer
 import com.cyebrcina.pos.data.remote.realtime.FireHutRealtimeManager
 import com.cyebrcina.pos.data.remote.realtime.IncomingCallEvent
 import com.cyebrcina.pos.data.repository.PhoneContactRepository
+import com.cyebrcina.pos.feature.order.create.NewOrderEntryCoordinator
+import com.cyebrcina.pos.feature.order.create.NewOrderEntryIntent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +29,7 @@ class IncomingCallViewModel @Inject constructor(
     realtimeManager: FireHutRealtimeManager,
     private val alertPlayer: IncomingCallAlertPlayer,
     private val phoneContactRepository: PhoneContactRepository,
+    private val entryCoordinator: NewOrderEntryCoordinator,
 ) : ViewModel() {
 
     private val queue = MutableStateFlow<List<IncomingCallEvent>>(emptyList())
@@ -49,6 +52,16 @@ class IncomingCallViewModel @Inject constructor(
 
     fun dismissCurrent() {
         queue.update { if (it.isEmpty()) it else it.drop(1) }
+    }
+
+    /** "Take Order" — hands the caller's details to the New Order flow via
+     * [NewOrderEntryCoordinator] (same one-shot handoff [com.cyebrcina.pos.feature.order.create.TablesViewModel]
+     * uses for starting an order at a table). The actual navigation is done by the caller
+     * ([IncomingCallOverlay]'s `onTakeOrder`), since this ViewModel has no NavController. */
+    fun takeOrder() {
+        val call = queue.value.firstOrNull() ?: return
+        entryCoordinator.setPending(NewOrderEntryIntent.StartFromCall(call.callerName, call.phone, call.callLogId))
+        dismissCurrent()
     }
 
     fun saveContact(name: String, address: String, notes: String) {

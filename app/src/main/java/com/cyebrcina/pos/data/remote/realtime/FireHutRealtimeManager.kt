@@ -27,6 +27,9 @@ data class IncomingCallEvent(
     val phone: String,
     val callerName: String?,
     val address: String?,
+    // The PhoneCallLog row Admin recorded this call as — passed through to
+    // CreateOrderRequest.phoneCallLogId if staff tap "Take Order".
+    val callLogId: String?,
     val isKnown: Boolean,
     val receivedAt: String,
 )
@@ -84,6 +87,7 @@ class FireHutRealtimeManager @Inject constructor() {
                             phone = phone,
                             callerName = payload.optString("callerName").takeIf { it.isNotBlank() },
                             address = payload.optString("address").takeIf { it.isNotBlank() },
+                            callLogId = payload.optString("callLogId").takeIf { it.isNotBlank() },
                             isKnown = payload.optBoolean("isKnown", false),
                             receivedAt = payload.optString("receivedAt"),
                         ),
