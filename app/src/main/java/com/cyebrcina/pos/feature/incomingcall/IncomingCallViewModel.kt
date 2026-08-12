@@ -50,8 +50,12 @@ class IncomingCallViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
 
+    /** The single exit point for the current popup — Dismiss, Save Customer, and Take Order
+     * all funnel through here, so stopping the ringtone here (rather than at each call site)
+     * guarantees it can never keep ringing past whatever staff just did with the call. */
     fun dismissCurrent() {
         queue.update { if (it.isEmpty()) it else it.drop(1) }
+        alertPlayer.stop()
     }
 
     /** "Take Order" — hands the caller's details to the New Order flow via
@@ -72,5 +76,9 @@ class IncomingCallViewModel @Inject constructor(
             _isSaving.value = false
             dismissCurrent()
         }
+    }
+
+    override fun onCleared() {
+        alertPlayer.stop()
     }
 }
