@@ -2,6 +2,7 @@ package com.cyebrcina.pos.feature.profile.view
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cyebrcina.pos.data.local.KitchenPrinterConnectionType
 import com.cyebrcina.pos.data.local.KitchenPrinterSettings
 import com.cyebrcina.pos.data.local.PrinterSettingsStore
 import com.cyebrcina.pos.data.model.DeviceSession
@@ -176,14 +177,23 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             localFlags.update { it.copy(isTestPrintingKitchen = true, kitchenTestResult = null) }
             val storeName = uiState.value.session?.storeName?.ifBlank { null } ?: "Fire Hut Pizza & Wraps"
+            val isBluetooth = printerSettingsStore.kitchenPrinter.first().connectionType == KitchenPrinterConnectionType.BLUETOOTH
             val result = kitchenPrinterDispatcher.printIfConfigured(
                 ReceiptBuilder.buildTestPrint(storeName),
                 PrinterPaperSize.MM_58,
             )
             val message = when (result) {
-                null -> "Enter a host/IP and turn the kitchen printer on first."
+                null -> if (isBluetooth) {
+                    "Choose a paired Bluetooth printer and turn the kitchen printer on first."
+                } else {
+                    "Enter a host/IP and turn the kitchen printer on first."
+                }
                 true -> "Sent — check the kitchen printer."
-                false -> "Couldn't reach the kitchen printer. Check the IP/port and that it's on the same network."
+                false -> if (isBluetooth) {
+                    "Couldn't reach the Bluetooth printer. Check it's paired, powered on, and in range."
+                } else {
+                    "Couldn't reach the kitchen printer. Check the IP/port and that it's on the same network."
+                }
             }
             localFlags.update { it.copy(isTestPrintingKitchen = false, kitchenTestResult = message) }
         }

@@ -1,5 +1,6 @@
 package com.cyebrcina.pos.printer.network
 
+import com.cyebrcina.pos.data.local.KitchenPrinterConnectionType
 import com.cyebrcina.pos.data.local.PrinterSettingsStore
 import com.cyebrcina.pos.printer.escpos.EscPosEncoder
 import com.cyebrcina.pos.printer.escpos.EscPosRasterEncoder
@@ -12,8 +13,8 @@ import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
 
 /**
- * Sends a kitchen ticket to the dedicated network kitchen printer configured in Settings, if one
- * is enabled — independent of whichever printer is selected as the main
+ * Sends a kitchen ticket to the dedicated kitchen printer configured in Settings (network or
+ * Bluetooth), if one is enabled — independent of whichever printer is selected as the main
  * [com.cyebrcina.pos.printer.PrinterService] for customer receipts, so a kitchen physically
  * apart from the till/counter can have its own printer without affecting where receipts print.
  */
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.first
 class KitchenPrinterDispatcher @Inject constructor(
     private val settingsStore: PrinterSettingsStore,
     private val networkPrinterClient: NetworkPrinterClient,
+    private val bluetoothPrinterClient: BluetoothPrinterClient,
 ) {
     /**
      * @return `null` if no kitchen printer is configured (caller should fall back to the main
@@ -32,12 +34,23 @@ class KitchenPrinterDispatcher @Inject constructor(
         printMode: PrintMode = PrintMode.ESC,
     ): Boolean? {
         val settings = settingsStore.kitchenPrinter.first()
-        if (!settings.enabled || settings.host.isBlank()) return null
+        if (!settings.enabled) return null
+
         val bytes = if (printMode == PrintMode.POS) {
             EscPosRasterEncoder.encode(ReceiptBitmapRenderer.render(document, paperSize))
         } else {
             EscPosEncoder.encode(document, paperSize)
         }
-        return networkPrinterClient.send(settings.host, settings.port, bytes).isSuccess
+
+        return when (settings.connectionType) {
+            KitchenPrinterConnectionType.NETWORK -> {
+                if (settings.host.isBlank()) return null
+                networkPrinterClient.send(settings.host, settings.port, bytes).isSuccess
+            }
+            KitchenPrinterConnectionType.BLUETOOTH -> {
+                if (settings.bluetoothAddress.isBlank()) return null
+                bluetoothPrinterClient.send(settings.bluetoothAddress, bytes).isSuccess
+            }
+        }
     }
 }

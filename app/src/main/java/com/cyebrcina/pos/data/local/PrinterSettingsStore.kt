@@ -20,19 +20,25 @@ import kotlinx.coroutines.flow.map
 
 private val Context.printerDataStore by preferencesDataStore(name = "printer_settings")
 
+enum class KitchenPrinterConnectionType { NETWORK, BLUETOOTH }
+
 data class KitchenPrinterSettings(
     val enabled: Boolean = false,
     val name: String = "Kitchen",
+    val connectionType: KitchenPrinterConnectionType = KitchenPrinterConnectionType.NETWORK,
     val host: String = "",
     val port: Int = DEFAULT_NETWORK_PRINTER_PORT,
+    // Paired Bluetooth printer, only used when connectionType == BLUETOOTH.
+    val bluetoothAddress: String = "",
+    val bluetoothName: String = "",
 )
 
 /**
  * Persists the selected main printer (receipt/customer printer — whichever of
  * Bluetooth/USB/built-in/network the cashier picked in Settings) and a separate, optional
- * network-only kitchen printer, across app restarts. Previously nothing here was saved at all —
- * [com.cyebrcina.pos.printer.PrinterService]'s `selectedPrinter` was just an in-memory var, so
- * every app relaunch meant reselecting the printer from scratch.
+ * kitchen printer (network or Bluetooth), across app restarts. Previously nothing here was
+ * saved at all — [com.cyebrcina.pos.printer.PrinterService]'s `selectedPrinter` was just an
+ * in-memory var, so every app relaunch meant reselecting the printer from scratch.
  */
 @Singleton
 class PrinterSettingsStore @Inject constructor(
@@ -47,8 +53,11 @@ class PrinterSettingsStore @Inject constructor(
 
         val KITCHEN_ENABLED = booleanPreferencesKey("kitchen_printer_enabled")
         val KITCHEN_NAME = stringPreferencesKey("kitchen_printer_name")
+        val KITCHEN_TYPE = stringPreferencesKey("kitchen_printer_type") // NETWORK | BLUETOOTH
         val KITCHEN_HOST = stringPreferencesKey("kitchen_printer_host")
         val KITCHEN_PORT = intPreferencesKey("kitchen_printer_port")
+        val KITCHEN_BT_ADDRESS = stringPreferencesKey("kitchen_printer_bt_address")
+        val KITCHEN_BT_NAME = stringPreferencesKey("kitchen_printer_bt_name")
     }
 
     private val prefsFlow = context.printerDataStore.data
@@ -97,8 +106,14 @@ class PrinterSettingsStore @Inject constructor(
         KitchenPrinterSettings(
             enabled = prefs[Keys.KITCHEN_ENABLED] ?: false,
             name = prefs[Keys.KITCHEN_NAME] ?: "Kitchen",
+            connectionType = when (prefs[Keys.KITCHEN_TYPE]) {
+                "BLUETOOTH" -> KitchenPrinterConnectionType.BLUETOOTH
+                else -> KitchenPrinterConnectionType.NETWORK
+            },
             host = prefs[Keys.KITCHEN_HOST] ?: "",
             port = prefs[Keys.KITCHEN_PORT] ?: DEFAULT_NETWORK_PRINTER_PORT,
+            bluetoothAddress = prefs[Keys.KITCHEN_BT_ADDRESS] ?: "",
+            bluetoothName = prefs[Keys.KITCHEN_BT_NAME] ?: "",
         )
     }
 
@@ -106,8 +121,11 @@ class PrinterSettingsStore @Inject constructor(
         context.printerDataStore.edit { prefs ->
             prefs[Keys.KITCHEN_ENABLED] = settings.enabled
             prefs[Keys.KITCHEN_NAME] = settings.name
+            prefs[Keys.KITCHEN_TYPE] = settings.connectionType.name
             prefs[Keys.KITCHEN_HOST] = settings.host
             prefs[Keys.KITCHEN_PORT] = settings.port
+            prefs[Keys.KITCHEN_BT_ADDRESS] = settings.bluetoothAddress
+            prefs[Keys.KITCHEN_BT_NAME] = settings.bluetoothName
         }
     }
 }

@@ -1,9 +1,14 @@
 package com.cyebrcina.pos.feature.profile.view
 
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,11 +18,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Refresh
@@ -27,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -38,8 +46,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cyebrcina.pos.core.components.AppCard
@@ -51,6 +61,7 @@ import com.cyebrcina.pos.core.theme.PosColors
 import com.cyebrcina.pos.core.theme.PosNovaShapes
 import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
+import com.cyebrcina.pos.data.local.KitchenPrinterConnectionType
 import com.cyebrcina.pos.data.local.KitchenPrinterSettings
 import com.cyebrcina.pos.data.remote.model.ReceiptPrefs
 import com.cyebrcina.pos.payment.model.PaymentProvider
@@ -240,10 +251,12 @@ private fun PrinterStatusBadge(status: PrinterStatus) {
 }
 
 /**
- * A separate, network-only printer for kitchen tickets — a kitchen physically apart from the
- * till/counter (the main [PrinterService] above) can have its own printer, so a ticket doesn't
- * depend on someone carrying it over. Host/port are entered manually since there's no reliable
- * network-printer discovery to scan for, unlike Bluetooth pairing or USB.
+ * A separate printer for kitchen tickets, over the network or a paired Bluetooth device — a
+ * kitchen physically apart from the till/counter (the main [PrinterService] above) can have its
+ * own printer, so a ticket doesn't depend on someone carrying it over. Network host/port are
+ * entered manually since there's no reliable network-printer discovery to scan for; a Bluetooth
+ * printer is instead picked from the device's already-paired list, the same source
+ * [com.cyebrcina.pos.printer.imin.IminPrinterService.startDiscovery] uses for the main printer.
  */
 @Composable
 private fun KitchenPrinterSection(
@@ -254,8 +267,22 @@ private fun KitchenPrinterSection(
     onTestPrint: () -> Unit,
 ) {
     var enabled by remember(settings.enabled) { mutableStateOf(settings.enabled) }
+    var connectionType by remember(settings.connectionType) { mutableStateOf(settings.connectionType) }
     var host by remember(settings.host) { mutableStateOf(settings.host) }
     var port by remember(settings.port) { mutableStateOf(settings.port.toString()) }
+    var bluetoothAddress by remember(settings.bluetoothAddress) { mutableStateOf(settings.bluetoothAddress) }
+    var bluetoothName by remember(settings.bluetoothName) { mutableStateOf(settings.bluetoothName) }
+    var showBluetoothPicker by remember { mutableStateOf(false) }
+
+    fun currentSettings(overrideEnabled: Boolean = enabled) = KitchenPrinterSettings(
+        enabled = overrideEnabled,
+        name = settings.name,
+        connectionType = connectionType,
+        host = host,
+        port = port.toIntOrNull() ?: settings.port,
+        bluetoothAddress = bluetoothAddress,
+        bluetoothName = bluetoothName,
+    )
 
     Text("Kitchen Printer", style = PosTextStyles.h6, color = PosColors.Neutral12)
     Spacer(Modifier.height(Spacing.xxs))
@@ -273,7 +300,7 @@ private fun KitchenPrinterSection(
                 checked = enabled,
                 onCheckedChange = { checked ->
                     enabled = checked
-                    onSave(KitchenPrinterSettings(checked, settings.name, host, port.toIntOrNull() ?: settings.port))
+                    onSave(currentSettings(overrideEnabled = checked))
                 },
                 colors = SwitchDefaults.colors(checkedTrackColor = PosColors.Primary500),
             )
@@ -282,28 +309,76 @@ private fun KitchenPrinterSection(
         if (enabled) {
             Spacer(Modifier.height(Spacing.sm))
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                OutlinedTextField(
-                    value = host,
-                    onValueChange = { host = it },
-                    label = { Text("Printer IP") },
-                    placeholder = { Text("192.168.1.50") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
+                ConnectionTypeChip(
+                    label = "Network",
+                    selected = connectionType == KitchenPrinterConnectionType.NETWORK,
+                    onClick = { connectionType = KitchenPrinterConnectionType.NETWORK },
                 )
-                OutlinedTextField(
-                    value = port,
-                    onValueChange = { port = it.filter(Char::isDigit) },
-                    label = { Text("Port") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.width(96.dp),
+                ConnectionTypeChip(
+                    label = "Bluetooth",
+                    selected = connectionType == KitchenPrinterConnectionType.BLUETOOTH,
+                    onClick = { connectionType = KitchenPrinterConnectionType.BLUETOOTH },
                 )
             }
+            Spacer(Modifier.height(Spacing.sm))
+
+            when (connectionType) {
+                KitchenPrinterConnectionType.NETWORK -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                        OutlinedTextField(
+                            value = host,
+                            onValueChange = { host = it },
+                            label = { Text("Printer IP") },
+                            placeholder = { Text("192.168.1.50") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                        OutlinedTextField(
+                            value = port,
+                            onValueChange = { port = it.filter(Char::isDigit) },
+                            label = { Text("Port") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.width(96.dp),
+                        )
+                    }
+                }
+                KitchenPrinterConnectionType.BLUETOOTH -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(PosNovaShapes.medium)
+                            .background(PosColors.Neutral3)
+                            .clickable { showBluetoothPicker = true }
+                            .padding(Spacing.sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Bluetooth,
+                            contentDescription = null,
+                            tint = PosColors.Neutral7,
+                            modifier = Modifier.padding(end = Spacing.xs),
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                bluetoothName.ifBlank { "No printer chosen" },
+                                style = PosTextStyles.bodySmallMedium,
+                                color = PosColors.Neutral12,
+                            )
+                            if (bluetoothAddress.isNotBlank()) {
+                                Text(bluetoothAddress, style = PosTextStyles.bodyXSmallRegular, color = PosColors.Neutral7)
+                            }
+                        }
+                        Text("Choose", style = PosTextStyles.bodyXSmallSemibold, color = PosColors.Primary500)
+                    }
+                }
+            }
+
             Spacer(Modifier.height(Spacing.xs))
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 SecondaryButton(
                     text = "Save",
-                    onClick = { onSave(KitchenPrinterSettings(enabled, settings.name, host, port.toIntOrNull() ?: settings.port)) },
+                    onClick = { onSave(currentSettings()) },
                     modifier = Modifier.weight(1f),
                 )
                 SecondaryButton(
@@ -317,6 +392,93 @@ private fun KitchenPrinterSection(
             testResult?.let { message ->
                 Spacer(Modifier.height(Spacing.xxs))
                 Text(message, style = PosTextStyles.bodyXSmallMedium, color = PosColors.Neutral7)
+            }
+        }
+    }
+
+    if (showBluetoothPicker) {
+        BluetoothPrinterPickerDialog(
+            onDismiss = { showBluetoothPicker = false },
+            onSelected = { address, name ->
+                bluetoothAddress = address
+                bluetoothName = name
+                showBluetoothPicker = false
+                onSave(currentSettings().copy(bluetoothAddress = address, bluetoothName = name))
+            },
+        )
+    }
+}
+
+@Composable
+private fun ConnectionTypeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(percent = 50))
+            .background(if (selected) PosColors.Primary500 else PosColors.Neutral3)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+    ) {
+        Text(label, style = PosTextStyles.bodyXSmallSemibold, color = if (selected) PosColors.White else PosColors.Neutral12)
+    }
+}
+
+@SuppressLint("MissingPermission")
+private fun bondedBluetoothDevices(context: Context): List<BluetoothDevice> {
+    val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+    return manager?.adapter?.bondedDevices?.toList().orEmpty()
+}
+
+/** Picks from the device's already-paired Bluetooth devices — same source as the main printer's
+ * discovery, but scoped to just the kitchen printer's own setting rather than sharing
+ * [com.cyebrcina.pos.printer.PrinterService]'s `discoveredPrinters`/connection state, so choosing
+ * a kitchen printer here can never interfere with the main printer's own selection/connection. */
+@Composable
+private fun BluetoothPrinterPickerDialog(onDismiss: () -> Unit, onSelected: (address: String, name: String) -> Unit) {
+    val context = LocalContext.current
+    val devices = remember { bondedBluetoothDevices(context) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(20.dp), color = PosColors.White) {
+            Column(Modifier.width(360.dp).padding(Spacing.lg)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Choose Bluetooth Printer", style = PosTextStyles.h6, color = PosColors.Neutral12)
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close")
+                    }
+                }
+                Spacer(Modifier.height(Spacing.sm))
+                if (devices.isEmpty()) {
+                    Text(
+                        "No paired Bluetooth devices. Pair the printer in this device's system Bluetooth settings first.",
+                        style = PosTextStyles.bodySmallRegular,
+                        color = PosColors.Neutral7,
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                        devices.forEach { device ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(PosNovaShapes.medium)
+                                    .background(PosColors.Neutral3)
+                                    .clickable { onSelected(device.address, device.name ?: "Unknown Device") }
+                                    .padding(Spacing.sm),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Default.Bluetooth,
+                                    contentDescription = null,
+                                    tint = PosColors.Neutral7,
+                                    modifier = Modifier.padding(end = Spacing.xs),
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(device.name ?: "Unknown Device", style = PosTextStyles.bodySmallMedium, color = PosColors.Neutral12)
+                                    Text(device.address, style = PosTextStyles.bodyXSmallRegular, color = PosColors.Neutral7)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
