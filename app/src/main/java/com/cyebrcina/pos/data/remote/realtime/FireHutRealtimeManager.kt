@@ -18,6 +18,19 @@ import org.json.JSONObject
  * just being a refresh signal. */
 data class WaiterCallEvent(val tableId: String, val tableNumber: String, val calledAt: String)
 
+/** A call came in on the restaurant's phone line — see Admin's
+ * POST /api/integrations/phone/incoming-call (the bOnline webhook
+ * receiver), which resolves the caller against Customer/PhoneContact and
+ * emits this. Like [WaiterCallEvent], the payload carries what the popup
+ * needs directly since there's no REST endpoint to re-poll. */
+data class IncomingCallEvent(
+    val phone: String,
+    val callerName: String?,
+    val address: String?,
+    val isKnown: Boolean,
+    val receivedAt: String,
+)
+
 /**
  * Socket.IO connection to Fire Hut's backend (see openapi.yaml's `x-realtime` section). This is
  * the "instant pop-up" channel — [FireHutOrderRepository][com.cyebrcina.pos.data.repository.firehut.FireHutOrderRepositoryImpl]
@@ -39,6 +52,9 @@ class FireHutRealtimeManager @Inject constructor() {
     private val _waiterCallEvents = MutableSharedFlow<WaiterCallEvent>(extraBufferCapacity = 8)
     val waiterCallEvents: SharedFlow<WaiterCallEvent> = _waiterCallEvents.asSharedFlow()
 
+    private val _incomingCallEvents = MutableSharedFlow<IncomingCallEvent>(extraBufferCapacity = 8)
+    val incomingCallEvents: SharedFlow<IncomingCallEvent> = _incomingCallEvents.asSharedFlow()
+
     fun connect(token: String) {
         disconnect()
         runCatching {
@@ -57,6 +73,21 @@ class FireHutRealtimeManager @Inject constructor() {
                 val tableNumber = payload?.optString("tableNumber")?.takeIf { it.isNotBlank() }
                 if (tableId != null && tableNumber != null) {
                     _waiterCallEvents.tryEmit(WaiterCallEvent(tableId, tableNumber, payload.optString("calledAt")))
+                }
+            }
+            newSocket.on("incoming_call") { args ->
+                val payload = args.firstOrNull() as? JSONObject
+                val phone = payload?.optString("phone")?.takeIf { it.isNotBlank() }
+                if (phone != null) {
+                    _incomingCallEvents.tryEmit(
+                        IncomingCallEvent(
+                            phone = phone,
+                            callerName = payload.optString("callerName").takeIf { it.isNotBlank() },
+                            address = payload.optString("address").takeIf { it.isNotBlank() },
+                            isKnown = payload.optBoolean("isKnown", false),
+                            receivedAt = payload.optString("receivedAt"),
+                        ),
+                    )
                 }
             }
             newSocket.on(Socket.EVENT_CONNECT_ERROR) { args -> Log.w(TAG, "Socket connect error: ${args.firstOrNull()}") }

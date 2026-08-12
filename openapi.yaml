@@ -429,6 +429,35 @@ paths:
               schema: { $ref: '#/components/schemas/TablesResponse' }
         "401": { $ref: '#/components/responses/Unauthorized' }
 
+  /api/device/phone-contacts:
+    post:
+      tags: [Device Tables]
+      summary: Save/update a caller's name, address and notes from the till's Incoming Call popup
+      description: >-
+        Upserts by normalized phone number — same record Admin's own
+        savePhoneContact server action writes to, so a contact saved from
+        either the till or Admin is recognized by both next time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, name, address, notes]
+              properties:
+                phone: { type: string }
+                name: { type: string }
+                address: { type: string }
+                notes: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SavePhoneContactResponse' }
+        "400": { description: Invalid phone number }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
   # ---------------------------------------------------------------------
   # SERVER-TO-SERVER (not called by the device itself)
   # ---------------------------------------------------------------------
@@ -801,6 +830,26 @@ components:
         tableNumber: { type: string }
         calledAt: { type: string, format: date-time }
 
+    IncomingCallBroadcastPayload:
+      type: object
+      required: [phone, isKnown, receivedAt]
+      properties:
+        phone: { type: string, description: Last-10-digit normalized UK national number }
+        callerName: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        customerId: { type: string, nullable: true }
+        contactId: { type: string, nullable: true }
+        isKnown: { type: boolean }
+        receivedAt: { type: string, format: date-time }
+
+    SavePhoneContactResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
+        id: { type: string, nullable: true }
+        name: { type: string, nullable: true }
+
 x-realtime:
   description: >-
     Socket.IO server attached to the same Next.js HTTP server (see
@@ -821,3 +870,8 @@ x-realtime:
     waiter_called:
       direction: server -> client
       description: A dine-in diner tapped "Call Waiter". Payload matches WaiterCallBroadcastPayload.
+    incoming_call:
+      direction: server -> client
+      description: >-
+        A call came in on the restaurant's phone line (bOnline webhook).
+        Payload matches IncomingCallBroadcastPayload.

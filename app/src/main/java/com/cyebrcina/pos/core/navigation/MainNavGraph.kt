@@ -24,6 +24,7 @@ import com.cyebrcina.pos.feature.order.history.OrderHistoryScreen
 import com.cyebrcina.pos.feature.order.list.OrderQueueScreen
 import com.cyebrcina.pos.feature.profile.view.SettingsScreen
 import com.cyebrcina.pos.feature.report.ReportScreen
+import com.cyebrcina.pos.feature.incomingcall.IncomingCallOverlay
 import com.cyebrcina.pos.feature.waitercall.WaiterCallOverlay
 import androidx.hilt.navigation.compose.hiltViewModel
 
@@ -47,6 +48,7 @@ fun MainGraphHost(windowSizeClass: WindowSizeClass, onLoggedOut: () -> Unit) {
     // tab staff are on, and survives tab switches since it's scoped to this composable's own
     // lifetime rather than any one screen's.
     WaiterCallOverlay()
+    IncomingCallOverlay()
 
     MainScaffold(
         windowSizeClass = windowSizeClass,

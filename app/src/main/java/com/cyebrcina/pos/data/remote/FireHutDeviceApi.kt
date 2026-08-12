@@ -13,6 +13,8 @@ import com.cyebrcina.pos.data.remote.model.PaymentLinkResponse
 import com.cyebrcina.pos.data.remote.model.PendingOrdersResponse
 import com.cyebrcina.pos.data.remote.model.ReceiptData
 import com.cyebrcina.pos.data.remote.model.RejectOrderResponse
+import com.cyebrcina.pos.data.remote.model.SavePhoneContactRequest
+import com.cyebrcina.pos.data.remote.model.SavePhoneContactResponse
 import com.cyebrcina.pos.data.remote.model.KitchenTicketData
 import com.cyebrcina.pos.data.remote.model.SetStoreStatusRequest
 import com.cyebrcina.pos.data.remote.model.SetStoreStatusResponse
@@ -88,4 +90,8 @@ interface FireHutDeviceApi {
     /** Real, live. Creates a Stripe Checkout scan-to-pay QR for an order's outstanding balance. */
     @POST("api/device/orders/{id}/payment-link")
     suspend fun paymentLink(@Path("id") orderId: String): Response<PaymentLinkResponse>
+
+    /** Real, live. Saves/updates a caller's name/address/notes from the Incoming Call popup. */
+    @POST("api/device/phone-contacts")
+    suspend fun savePhoneContact(@Body request: SavePhoneContactRequest): Response<SavePhoneContactResponse>
 }

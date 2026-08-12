@@ -3,12 +3,14 @@ package com.cyebrcina.pos.di
 import com.cyebrcina.pos.data.repository.AuthRepository
 import com.cyebrcina.pos.data.repository.MenuRepository
 import com.cyebrcina.pos.data.repository.OrderRepository
+import com.cyebrcina.pos.data.repository.PhoneContactRepository
 import com.cyebrcina.pos.data.repository.ReportRepository
 import com.cyebrcina.pos.data.repository.StoreStatusRepository
 import com.cyebrcina.pos.data.repository.TableRepository
 import com.cyebrcina.pos.data.repository.firehut.FireHutAuthRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutMenuRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutOrderRepositoryImpl
+import com.cyebrcina.pos.data.repository.firehut.FireHutPhoneContactRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutReportRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutStoreStatusRepositoryImpl
 import com.cyebrcina.pos.data.repository.firehut.FireHutTableRepositoryImpl
@@ -46,4 +48,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindTableRepository(impl: FireHutTableRepositoryImpl): TableRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPhoneContactRepository(impl: FireHutPhoneContactRepositoryImpl): PhoneContactRepository
 }
