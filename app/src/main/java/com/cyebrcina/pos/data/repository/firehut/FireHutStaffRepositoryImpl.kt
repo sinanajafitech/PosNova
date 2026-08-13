@@ -4,6 +4,9 @@ import com.cyebrcina.pos.data.remote.FireHutDeviceApi
 import com.cyebrcina.pos.data.remote.errorMessageOrDefault
 import com.cyebrcina.pos.data.remote.model.ClockRequest
 import com.cyebrcina.pos.data.remote.model.ClockResponse
+import com.cyebrcina.pos.data.remote.model.DeviceStaffMember
+import com.cyebrcina.pos.data.remote.model.VerifyStaffPinRequest
+import com.cyebrcina.pos.data.remote.model.VerifyStaffPinResponse
 import com.cyebrcina.pos.data.repository.StaffRepository
 import java.io.IOException
 import javax.inject.Inject
@@ -20,7 +23,20 @@ class FireHutStaffRepositoryImpl @Inject constructor(
         val response = api.clockStaff(ClockRequest(pin))
         if (!response.isSuccessful) throw IllegalStateException(response.errorMessageOrDefault(json))
         response.body() ?: throw IllegalStateException("Empty response")
-    }.recoverCatching { cause ->
-        throw if (cause is IOException) IOException("Couldn't reach the server — check your connection", cause) else cause
-    }
+    }.recoverCatching { cause -> throw mapNetworkError(cause) }
+
+    override suspend fun list(): Result<List<DeviceStaffMember>> = runCatching {
+        val response = api.staffList()
+        if (!response.isSuccessful) throw IllegalStateException(response.errorMessageOrDefault(json))
+        response.body()?.staff ?: emptyList()
+    }.recoverCatching { cause -> throw mapNetworkError(cause) }
+
+    override suspend fun verifyPin(staffId: String, pin: String): Result<VerifyStaffPinResponse> = runCatching {
+        val response = api.verifyStaffPin(VerifyStaffPinRequest(staffId, pin))
+        if (!response.isSuccessful) throw IllegalStateException(response.errorMessageOrDefault(json))
+        response.body() ?: throw IllegalStateException("Empty response")
+    }.recoverCatching { cause -> throw mapNetworkError(cause) }
+
+    private fun mapNetworkError(cause: Throwable): Throwable =
+        if (cause is IOException) IOException("Couldn't reach the server — check your connection", cause) else cause
 }

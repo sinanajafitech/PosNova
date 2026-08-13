@@ -25,9 +25,12 @@ import com.cyebrcina.pos.data.remote.model.SavePhoneContactResponse
 import com.cyebrcina.pos.data.remote.model.KitchenTicketData
 import com.cyebrcina.pos.data.remote.model.SetStoreStatusRequest
 import com.cyebrcina.pos.data.remote.model.SetStoreStatusResponse
+import com.cyebrcina.pos.data.remote.model.StaffListResponse
 import com.cyebrcina.pos.data.remote.model.StoreStatusResponse
 import com.cyebrcina.pos.data.remote.model.TablesResponse
 import com.cyebrcina.pos.data.remote.model.ToggleSoldOutResponse
+import com.cyebrcina.pos.data.remote.model.VerifyStaffPinRequest
+import com.cyebrcina.pos.data.remote.model.VerifyStaffPinResponse
 import com.cyebrcina.pos.data.remote.model.ZReport
 import retrofit2.Response
 import retrofit2.http.Body
@@ -107,6 +110,15 @@ interface FireHutDeviceApi {
     /** Real, live. Clocks a staff member in/out by PIN — same StaffClockEvent model Admin's kiosk uses. */
     @POST("api/device/staff/clock")
     suspend fun clockStaff(@Body request: ClockRequest): Response<ClockResponse>
+
+    /** Real, live. The active staff roster for the till's "Select Staff" grid. */
+    @GET("api/device/staff")
+    suspend fun staffList(): Response<StaffListResponse>
+
+    /** Real, live. Confirms a specific staff member's PIN — identify-only, doesn't touch
+     * shift/clock status (unlike [clockStaff]). */
+    @POST("api/device/staff/verify-pin")
+    suspend fun verifyStaffPin(@Body request: VerifyStaffPinRequest): Response<VerifyStaffPinResponse>
 
     /** Real, live. This till's currently open cash register session, if any. */
     @GET("api/device/register/current")
