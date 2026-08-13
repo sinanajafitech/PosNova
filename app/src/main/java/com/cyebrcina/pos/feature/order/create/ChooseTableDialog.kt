@@ -34,7 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import com.cyebrcina.pos.core.components.AppOverlayDialog
 import com.cyebrcina.pos.core.components.AppTextField
 import com.cyebrcina.pos.core.theme.PosColors
 import com.cyebrcina.pos.core.theme.PosTextStyles
@@ -53,7 +53,7 @@ fun ChooseTableDialog(
     var pending by remember(selectedTable) { mutableStateOf(selectedTable) }
     var customEntry by remember { mutableStateOf("") }
 
-    Dialog(onDismissRequest = onDismiss) {
+    AppOverlayDialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(20.dp), color = PosColors.Surface) {
             Column(Modifier.width(900.dp).padding(Spacing.lg)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

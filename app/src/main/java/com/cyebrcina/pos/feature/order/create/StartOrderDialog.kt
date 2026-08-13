@@ -25,7 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import com.cyebrcina.pos.core.components.AppOverlayDialog
 import com.cyebrcina.pos.core.components.AppTextField
 import com.cyebrcina.pos.core.theme.PosColors
 import com.cyebrcina.pos.core.theme.PosTextStyles
@@ -44,7 +44,7 @@ fun StartOrderDialog(
     var table by remember { mutableStateOf<String?>(null) }
     var showChooseTable by remember { mutableStateOf(false) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    AppOverlayDialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(20.dp), color = PosColors.White) {
             Column(Modifier.width(500.dp).padding(Spacing.lg)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
