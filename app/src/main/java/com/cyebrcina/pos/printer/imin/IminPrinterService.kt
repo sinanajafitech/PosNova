@@ -279,31 +279,16 @@ class IminPrinterService @Inject constructor(
     }
 
     override suspend fun openCashDrawer(): Result<Unit> {
-        val printer = selectedPrinter ?: return Result.failure(IllegalStateException("No printer selected"))
-
-        if (printer.connection is PrinterConnection.BuiltIn) {
-            return builtInPrinter.openCashDrawer()
-        }
-
-        return withContext(Dispatchers.IO) {
-            val kickCommand = EscPosEncoder.cashDrawerKick
-            runCatching {
-                when (val connection = printer.connection) {
-                    is PrinterConnection.Bluetooth -> {
-                        bluetoothSocket?.outputStream?.write(kickCommand)
-                        bluetoothSocket?.outputStream?.flush()
-                    }
-                    is PrinterConnection.Usb -> {
-                        usbConnection?.bulkTransfer(usbEndpoint, kickCommand, kickCommand.size, 1000)
-                    }
-                    is PrinterConnection.Network -> {
-                        networkSocket?.getOutputStream()?.write(kickCommand)
-                        networkSocket?.getOutputStream()?.flush()
-                    }
-                    is PrinterConnection.BuiltIn -> error("unreachable — handled above")
-                }
-                Result.success(Unit)
-            }.getOrElse { Result.failure(it) }
-        }
+        // The D4's cash drawer kick-out circuit is wired through the device's
+        // own built-in thermal printer — physically independent of whatever
+        // printer (if any) is configured for receipts. Previously this
+        // routed through `selectedPrinter`, which meant a till with no
+        // printer selected yet failed outright ("No printer selected"), and
+        // a till configured to print receipts to an external Bluetooth/USB/
+        // network printer would kick that printer's port instead of the
+        // D4's own — the wrong drawer, or no drawer at all, on real
+        // hardware. Always goes through Imin's own SDK (openDrawer(), via
+        // IminBuiltInPrinter) regardless of the selected receipt printer.
+        return builtInPrinter.openCashDrawer()
     }
 }
