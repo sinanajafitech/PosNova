@@ -14,6 +14,7 @@ import com.cyebrcina.pos.data.remote.model.DeviceOrder
 import com.cyebrcina.pos.data.remote.model.DeviceOrderType
 import com.cyebrcina.pos.data.remote.model.MenuAddOn
 import com.cyebrcina.pos.data.remote.model.MenuCategory
+import com.cyebrcina.pos.data.remote.model.MenuModifierGroup
 import com.cyebrcina.pos.data.remote.model.MenuProduct
 import com.cyebrcina.pos.data.remote.model.MenuProductSize
 import com.cyebrcina.pos.data.remote.model.PaymentLinkResponse
@@ -58,6 +59,7 @@ data class QrPaymentState(
 data class NewOrderUiState(
     val categories: List<MenuCategory> = emptyList(),
     val addOns: List<MenuAddOn> = emptyList(),
+    val modifierGroups: List<MenuModifierGroup> = emptyList(),
     val isLoadingMenu: Boolean = true,
     val menuError: String? = null,
     val selectedCategoryId: String? = null,
@@ -76,6 +78,10 @@ data class NewOrderUiState(
     val submitError: String? = null,
     val paymentMethod: TillPaymentMethod = TillPaymentMethod.CASH,
     val cashTendered: String = "",
+    // A customer-chosen gratuity, kept separate from `total` — see
+    // Order.tipAmount on the Admin side. Text field (like cashTendered) so
+    // staff can type a custom amount, not just tap a preset.
+    val tipAmount: String = "",
     val terminalStatus: TerminalStatus = TerminalStatus.DISCONNECTED,
     val cardChargeError: String? = null,
     // True only when the last charge attempt failed specifically because
@@ -90,6 +96,8 @@ data class NewOrderUiState(
 ) {
     val subtotal: Double get() = cart.subtotal()
     val total: Double get() = subtotal
+    val tipAmountValue: Double get() = tipAmount.toDoubleOrNull() ?: 0.0
+    val totalWithTip: Double get() = total + tipAmountValue
     val itemCount: Int get() = cart.sumOf { it.quantity }
     val visibleCategories: List<MenuCategory>
         get() = categories
@@ -102,8 +110,8 @@ data class NewOrderUiState(
     val canSubmit: Boolean
         get() = cart.isNotEmpty() && (orderType == TillOrderType.COLLECTION || !tableLabel.isNullOrBlank())
     val cashTenderedAmount: Double get() = cashTendered.toDoubleOrNull() ?: 0.0
-    val change: Double get() = (cashTenderedAmount - total).coerceAtLeast(0.0)
-    val canConfirmCashPayment: Boolean get() = cashTenderedAmount >= total
+    val change: Double get() = (cashTenderedAmount - totalWithTip).coerceAtLeast(0.0)
+    val canConfirmCashPayment: Boolean get() = cashTenderedAmount >= totalWithTip
 }
 
 @HiltViewModel
@@ -139,6 +147,7 @@ class NewOrderViewModel @Inject constructor(
     private val submitError = MutableStateFlow<String?>(null)
     private val paymentMethod = MutableStateFlow(TillPaymentMethod.CASH)
     private val cashTendered = MutableStateFlow("")
+    private val tipAmount = MutableStateFlow("")
     private val cardChargeError = MutableStateFlow<String?>(null)
     private val cardChargeSdkNotConfigured = MutableStateFlow(false)
     private val completedOrder = MutableStateFlow<DeviceOrder?>(null)
@@ -186,6 +195,7 @@ class NewOrderViewModel @Inject constructor(
     private data class CheckoutCore(
         val paymentMethod: TillPaymentMethod,
         val cashTendered: String,
+        val tipAmount: String,
         val cardChargeError: String?,
         val completedOrder: DeviceOrder?,
         val printWarning: String?,
@@ -194,6 +204,7 @@ class NewOrderViewModel @Inject constructor(
     private data class CheckoutFlags(
         val paymentMethod: TillPaymentMethod,
         val cashTendered: String,
+        val tipAmount: String,
         val cardChargeError: String?,
         val completedOrder: DeviceOrder?,
         val printWarning: String?,
@@ -216,17 +227,24 @@ class NewOrderViewModel @Inject constructor(
         submitError,
     ) { core, submitting, error -> UiFlags(core.hasStartedOrder, core.detailProduct, core.showChooseTable, core.isLoadingMenu, core.menuError, submitting, error) }
     private val checkoutFlags = combine(
-        combine(paymentMethod, cashTendered, cardChargeError, completedOrder, printWarning, ::CheckoutCore),
+        combine(
+            combine(paymentMethod, cashTendered, tipAmount, ::Triple),
+            combine(cardChargeError, completedOrder, printWarning, ::Triple),
+        ) { payment, rest -> CheckoutCore(payment.first, payment.second, payment.third, rest.first, rest.second, rest.third) },
         qrPayment,
-    ) { core, qr -> CheckoutFlags(core.paymentMethod, core.cashTendered, core.cardChargeError, core.completedOrder, core.printWarning, qr) }
+    ) { core, qr ->
+        CheckoutFlags(core.paymentMethod, core.cashTendered, core.tipAmount, core.cardChargeError, core.completedOrder, core.printWarning, qr)
+    }
 
     val uiState: StateFlow<NewOrderUiState> = combine(
         menuRepository.categories,
         menuRepository.addOns,
+        menuRepository.modifierGroups,
         combine(configFlags, uiFlags, checkoutFlags, paymentTerminalService.status) { config, ui, checkout, terminal ->
             NewOrderUiState(
                 categories = emptyList(), // filled in below from menuRepository.categories directly
                 addOns = emptyList(),
+                modifierGroups = emptyList(),
                 isLoadingMenu = ui.isLoadingMenu,
                 menuError = ui.menuError,
                 selectedCategoryId = config.selectedCategoryId,
@@ -245,6 +263,7 @@ class NewOrderViewModel @Inject constructor(
                 submitError = ui.submitError,
                 paymentMethod = checkout.paymentMethod,
                 cashTendered = checkout.cashTendered,
+                tipAmount = checkout.tipAmount,
                 terminalStatus = terminal,
                 cardChargeError = checkout.cardChargeError,
                 completedOrder = checkout.completedOrder,
@@ -253,8 +272,8 @@ class NewOrderViewModel @Inject constructor(
             )
         },
         cardChargeSdkNotConfigured,
-    ) { categories, addOns, partial, sdkNotConfigured ->
-        partial.copy(categories = categories, addOns = addOns, cardChargeSdkNotConfigured = sdkNotConfigured)
+    ) { categories, addOns, modifierGroups, partial, sdkNotConfigured ->
+        partial.copy(categories = categories, addOns = addOns, modifierGroups = modifierGroups, cardChargeSdkNotConfigured = sdkNotConfigured)
     }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), NewOrderUiState())
 
@@ -377,18 +396,19 @@ class NewOrderViewModel @Inject constructor(
     }
 
     fun onCashTenderedChange(value: String) = cashTendered.update { value }
+    fun onTipAmountChange(value: String) = tipAmount.update { value }
 
     fun chargeCard() {
         val state = uiState.value
         viewModelScope.launch {
             cardChargeError.value = null
             cardChargeSdkNotConfigured.value = false
-            paymentTerminalService.chargeCard(state.total, "GBP", "TILL-${System.currentTimeMillis()}")
+            paymentTerminalService.chargeCard(state.totalWithTip, "GBP", "TILL-${System.currentTimeMillis()}")
                 .onSuccess { result ->
                     submitOrder(
                         CreateOrderPayment(
                             method = "CARD",
-                            amount = state.total,
+                            amount = state.totalWithTip,
                             provider = paymentTerminalService.provider.toApiName(),
                             cardBrand = result.cardBrand,
                             cardLast4 = result.cardLast4,
@@ -421,14 +441,14 @@ class NewOrderViewModel @Inject constructor(
         viewModelScope.launch {
             cardChargeError.value = null
             cardChargeSdkNotConfigured.value = false
-            submitOrder(CreateOrderPayment(method = "CARD", amount = state.total))
+            submitOrder(CreateOrderPayment(method = "CARD", amount = state.totalWithTip))
         }
     }
 
     fun confirmCashPayment() {
         val state = uiState.value
         viewModelScope.launch {
-            submitOrder(CreateOrderPayment(method = "CASH", amount = state.total, cashTendered = state.cashTenderedAmount))
+            submitOrder(CreateOrderPayment(method = "CASH", amount = state.totalWithTip, cashTendered = state.cashTenderedAmount))
         }
     }
 
@@ -503,6 +523,7 @@ class NewOrderViewModel @Inject constructor(
                 )
             },
             payment = payment,
+            tipAmount = state.tipAmountValue.takeIf { it > 0 },
         )
 
         orderRepository.createOrder(request)
@@ -593,6 +614,7 @@ class NewOrderViewModel @Inject constructor(
         orderType.value = TillOrderType.DINE_IN
         paymentMethod.value = TillPaymentMethod.CASH
         cashTendered.value = ""
+        tipAmount.value = ""
         cardChargeError.value = null
         completedOrder.value = null
         printWarning.value = null

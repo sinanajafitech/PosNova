@@ -40,6 +40,10 @@ data class CreateOrderRequest(
     val notes: String? = null,
     val items: List<CreateOrderItemRequest>,
     val payment: CreateOrderPayment,
+    /** A customer-chosen gratuity, kept separate from the order's own total
+     * — see Order.tipAmount on the Admin side. Null/0 behaves exactly as
+     * before this field existed. */
+    val tipAmount: Double? = null,
 )
 
 @Serializable

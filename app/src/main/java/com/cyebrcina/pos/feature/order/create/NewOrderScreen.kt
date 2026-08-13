@@ -99,6 +99,7 @@ fun NewOrderScreen(
         ProductDetailDialog(
             product = product,
             addOns = state.addOns,
+            modifierGroups = state.modifierGroups,
             onDismiss = viewModel::onDetailDismissed,
             onAddToCart = { size, addOns, qty, notes -> viewModel.addToCart(product, size, addOns, qty, notes) },
         )

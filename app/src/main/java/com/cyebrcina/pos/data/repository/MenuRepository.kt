@@ -2,6 +2,7 @@ package com.cyebrcina.pos.data.repository
 
 import com.cyebrcina.pos.data.remote.model.MenuAddOn
 import com.cyebrcina.pos.data.remote.model.MenuCategory
+import com.cyebrcina.pos.data.remote.model.MenuModifierGroup
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 interface MenuRepository {
     val categories: StateFlow<List<MenuCategory>>
     val addOns: StateFlow<List<MenuAddOn>>
+    val modifierGroups: StateFlow<List<MenuModifierGroup>>
 
     suspend fun refresh(): Result<Unit>
 

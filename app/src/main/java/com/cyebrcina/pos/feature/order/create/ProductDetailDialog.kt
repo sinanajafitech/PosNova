@@ -44,8 +44,14 @@ import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
 import com.cyebrcina.pos.core.util.asCurrency
 import com.cyebrcina.pos.data.remote.model.MenuAddOn
+import com.cyebrcina.pos.data.remote.model.MenuModifierGroup
 import com.cyebrcina.pos.data.remote.model.MenuProduct
 import com.cyebrcina.pos.data.remote.model.MenuProductSize
+
+private data class ResolvedModifierGroup(
+    val group: MenuModifierGroup,
+    val addOns: List<MenuAddOn>,
+)
 
 /** Matches Figma's "Popup Detail Menu": image, category tag, name/description, price + qty stepper, Add to cart CTA. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -53,6 +59,7 @@ import com.cyebrcina.pos.data.remote.model.MenuProductSize
 fun ProductDetailDialog(
     product: MenuProduct,
     addOns: List<MenuAddOn>,
+    modifierGroups: List<MenuModifierGroup>,
     onDismiss: () -> Unit,
     onAddToCart: (MenuProductSize?, List<MenuAddOn>, Int, String?) -> Unit,
 ) {
@@ -60,6 +67,17 @@ fun ProductDetailDialog(
     var selectedAddOns by remember(product.id) { mutableStateOf<Set<MenuAddOn>>(emptySet()) }
     var quantity by remember(product.id) { mutableIntStateOf(1) }
     var notes by remember(product.id) { mutableStateOf("") }
+
+    val groupsForProduct = remember(product.id, addOns, modifierGroups) {
+        modifierGroups
+            .filter { it.id in product.modifierGroupIds }
+            .map { group -> ResolvedModifierGroup(group, addOns.filter { it.modifierGroupId == group.id }) }
+            .filter { it.addOns.isNotEmpty() }
+    }
+    val ungroupedAddOns = remember(addOns) { addOns.filter { it.modifierGroupId == null } }
+    val incompleteGroup = groupsForProduct.find { resolved ->
+        selectedAddOns.count { it in resolved.addOns } < resolved.group.minSelect
+    }
 
     val unitPrice = (selectedSize?.price ?: product.price) + selectedAddOns.sumOf { it.price }
     val total = unitPrice * quantity
@@ -125,12 +143,47 @@ fun ProductDetailDialog(
                         }
                     }
 
-                    if (addOns.isNotEmpty()) {
+                    groupsForProduct.forEach { resolved ->
+                        val selectedCount = selectedAddOns.count { it in resolved.addOns }
+                        val isRequired = resolved.group.minSelect > 0
+                        val isIncomplete = selectedCount < resolved.group.minSelect
+                        Spacer(Modifier.height(Spacing.sm))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xxxs)) {
+                            Text(resolved.group.name, style = PosTextStyles.bodySmallSemibold, color = PosColors.Neutral10)
+                            if (isRequired) {
+                                Text(
+                                    if (isIncomplete) "· required" else "· selected",
+                                    style = PosTextStyles.bodyXSmallSemibold,
+                                    color = if (isIncomplete) PosColors.Danger else PosColors.Success500,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(Spacing.xxs))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xxs), verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
+                            resolved.addOns.forEach { addOn ->
+                                val isSelected = addOn in selectedAddOns
+                                SelectableChip(
+                                    label = "${addOn.name} · +${addOn.price.asCurrency()}",
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedAddOns = when {
+                                            isSelected -> selectedAddOns - addOn
+                                            resolved.group.maxSelect == 1 -> selectedAddOns - resolved.addOns.toSet() + addOn
+                                            resolved.group.maxSelect != null && selectedCount >= resolved.group.maxSelect -> selectedAddOns
+                                            else -> selectedAddOns + addOn
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+
+                    if (ungroupedAddOns.isNotEmpty()) {
                         Spacer(Modifier.height(Spacing.sm))
                         Text("Add-ons", style = PosTextStyles.bodySmallSemibold, color = PosColors.Neutral10)
                         Spacer(Modifier.height(Spacing.xxs))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xxs), verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
-                            addOns.forEach { addOn ->
+                            ungroupedAddOns.forEach { addOn ->
                                 val isSelected = addOn in selectedAddOns
                                 SelectableChip(
                                     label = "${addOn.name} · +${addOn.price.asCurrency()}",
@@ -154,10 +207,19 @@ fun ProductDetailDialog(
                     Spacer(Modifier.height(Spacing.sm))
                 }
 
+                incompleteGroup?.let {
+                    Text(
+                        "Choose an option for \"${it.group.name}\" before adding to cart.",
+                        style = PosTextStyles.bodyXSmallSemibold,
+                        color = PosColors.Danger,
+                        modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.xxxs),
+                    )
+                }
                 Box(Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.sm)) {
                     FlowPrimaryButton(
                         text = "Add to cart (${total.asCurrency()})",
                         onClick = { onAddToCart(selectedSize, selectedAddOns.toList(), quantity, notes.ifBlank { null }) },
+                        enabled = incompleteGroup == null,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }

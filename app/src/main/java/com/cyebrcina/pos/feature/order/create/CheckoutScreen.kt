@@ -84,12 +84,19 @@ fun CheckoutScreen(
                         Text("Sub Total", style = PosTextStyles.bodySmallMedium, color = PosColors.Neutral13)
                         Text(state.subtotal.asCurrency(), style = PosTextStyles.bodySmallSemibold, color = PosColors.Neutral13)
                     }
+                    if (state.tipAmountValue > 0.005) {
+                        Spacer(Modifier.height(Spacing.xxs))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Tip", style = PosTextStyles.bodySmallMedium, color = PosColors.Neutral13)
+                            Text(state.tipAmountValue.asCurrency(), style = PosTextStyles.bodySmallSemibold, color = PosColors.Neutral13)
+                        }
+                    }
                     Spacer(Modifier.height(Spacing.xxs))
                     HorizontalDivider(color = PosColors.Border)
                     Spacer(Modifier.height(Spacing.xxs))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("TOTAL", style = PosTextStyles.bodyMediumSemibold, color = PosColors.Neutral13)
-                        Text(state.total.asCurrency(), style = PosTextStyles.h5, color = PosColors.Neutral13)
+                        Text(state.totalWithTip.asCurrency(), style = PosTextStyles.h5, color = PosColors.Neutral13)
                     }
                 }
             }
@@ -107,6 +114,13 @@ fun CheckoutScreen(
                 )
                 Spacer(Modifier.height(Spacing.lg))
 
+                // Not shown for QR — that flow hands the customer off to pay on their own
+                // phone before any tender step happens here.
+                if (state.paymentMethod != TillPaymentMethod.QR) {
+                    TipSection(state, viewModel)
+                    Spacer(Modifier.height(Spacing.lg))
+                }
+
                 when (state.paymentMethod) {
                     TillPaymentMethod.CASH -> CashPaymentSection(state, viewModel)
                     TillPaymentMethod.CARD -> CardPaymentSection(state, viewModel)
@@ -123,19 +137,42 @@ fun CheckoutScreen(
 }
 
 @Composable
+private fun TipSection(state: NewOrderUiState, viewModel: NewOrderViewModel) {
+    Text("Add a tip?", style = PosTextStyles.bodySmallSemibold, color = PosColors.Neutral13)
+    Spacer(Modifier.height(Spacing.xs))
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
+        listOf(0, 10, 15, 20).forEach { pct ->
+            val presetAmount = "%.2f".format(state.total * pct / 100)
+            CashPresetChip(
+                label = if (pct == 0) "No tip" else "$pct%",
+                onClick = { viewModel.onTipAmountChange(presetAmount) },
+            )
+        }
+    }
+    Spacer(Modifier.height(Spacing.xs))
+    AppTextField(
+        value = state.tipAmount,
+        onValueChange = viewModel::onTipAmountChange,
+        label = "Custom tip amount",
+        placeholder = "0.00",
+        keyboardType = KeyboardType.Decimal,
+    )
+}
+
+@Composable
 private fun CashPaymentSection(state: NewOrderUiState, viewModel: NewOrderViewModel) {
     AppTextField(
         value = state.cashTendered,
         onValueChange = viewModel::onCashTenderedChange,
         label = "Cash Tendered",
-        placeholder = state.total.asCurrency(),
+        placeholder = state.totalWithTip.asCurrency(),
         keyboardType = KeyboardType.Decimal,
     )
     Spacer(Modifier.height(Spacing.xs))
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
-        cashPresets(state.total).forEach { amount ->
+        cashPresets(state.totalWithTip).forEach { amount ->
             CashPresetChip(
-                label = if (amount == state.total) "Exact" else amount.asCurrency(),
+                label = if (amount == state.totalWithTip) "Exact" else amount.asCurrency(),
                 onClick = { viewModel.onCashTenderedChange("%.2f".format(amount)) },
             )
         }
@@ -197,7 +234,7 @@ private fun CardPaymentSection(state: NewOrderUiState, viewModel: NewOrderViewMo
         Spacer(Modifier.height(Spacing.sm))
     }
     FlowPrimaryButton(
-        text = if (state.isSubmitting) "Submitting…" else "Charge ${state.total.asCurrency()}",
+        text = if (state.isSubmitting) "Submitting…" else "Charge ${state.totalWithTip.asCurrency()}",
         onClick = viewModel::chargeCard,
         enabled = !state.isChargingCard && !state.isSubmitting,
         loading = state.isChargingCard || state.isSubmitting,
