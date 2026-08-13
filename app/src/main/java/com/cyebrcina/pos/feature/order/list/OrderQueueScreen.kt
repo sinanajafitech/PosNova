@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -102,13 +103,27 @@ fun OrderQueueScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Today", style = PosTextStyles.h5, color = PosColors.Neutral13)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                        SquareIconButton(icon = Icons.Filled.PointOfSale, contentDescription = "Open Cash Drawer", onClick = viewModel::openCashDrawer)
+                        SquareIconButton(
+                            icon = Icons.Filled.PointOfSale,
+                            contentDescription = "Open Cash Drawer",
+                            loading = state.isOpeningDrawer,
+                            onClick = viewModel::openCashDrawer,
+                        )
                         FlowPrimaryButton(
                             text = "Add New Order",
                             onClick = onAddNewOrder,
                             leadingIcon = { Icon(Icons.Filled.AddCircle, contentDescription = null, tint = PosColors.White, modifier = Modifier.size(18.dp)) },
                         )
                     }
+                }
+            }
+            state.drawerFeedback?.let { feedback ->
+                item {
+                    Text(
+                        feedback.message,
+                        style = PosTextStyles.bodySmallSemibold,
+                        color = if (feedback.isError) PosColors.Warning500 else PosColors.Success500,
+                    )
                 }
             }
 
@@ -234,16 +249,25 @@ private fun TopProductsCard(products: List<TopProduct>, modifier: Modifier = Mod
 /** A square (not pill-shaped) icon-only action button, matched to FlowPrimaryButton's
  * 54.dp height so it sits flush next to it. */
 @Composable
-private fun SquareIconButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
+private fun SquareIconButton(
+    icon: ImageVector,
+    contentDescription: String,
+    loading: Boolean = false,
+    onClick: () -> Unit,
+) {
     Box(
         modifier = Modifier
             .size(54.dp)
             .clip(RoundedCornerShape(PosRadius.lg))
-            .background(PosColors.Blue500)
-            .clickable(onClick = onClick),
+            .background(if (loading) PosColors.Blue300 else PosColors.Blue500)
+            .then(if (loading) Modifier else Modifier.clickable(onClick = onClick)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = contentDescription, tint = PosColors.White, modifier = Modifier.size(24.dp))
+        if (loading) {
+            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp, color = PosColors.White)
+        } else {
+            Icon(icon, contentDescription = contentDescription, tint = PosColors.White, modifier = Modifier.size(24.dp))
+        }
     }
 }
 

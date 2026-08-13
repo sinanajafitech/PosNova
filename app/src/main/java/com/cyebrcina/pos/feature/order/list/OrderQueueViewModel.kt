@@ -35,11 +35,18 @@ data class DashboardStats(
     val topProducts: List<TopProduct> = emptyList(),
 )
 
+/** Result of the last manual "Open Cash Drawer" tap — shown inline near the button and
+ * auto-cleared, since openCashDrawer() actually verifies the kick landed (see
+ * IminBuiltInPrinter.openCashDrawer()) rather than just firing blind. */
+data class DrawerFeedback(val message: String, val isError: Boolean)
+
 data class OrderQueueUiState(
     val session: DeviceSession? = null,
     val pendingOrders: List<DeviceOrder> = emptyList(),
     val acceptingOrders: Boolean? = null,
     val stats: DashboardStats = DashboardStats(),
+    val isOpeningDrawer: Boolean = false,
+    val drawerFeedback: DrawerFeedback? = null,
 ) {
     /** Percent change vs yesterday — null if yesterday's Z-report isn't available. */
     fun trend(current: Double, metric: (ZReport) -> Double): Double? {
@@ -60,18 +67,23 @@ class OrderQueueViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val dashboardStats = MutableStateFlow(DashboardStats())
+    private val isOpeningDrawer = MutableStateFlow(false)
+    private val drawerFeedback = MutableStateFlow<DrawerFeedback?>(null)
 
     val uiState: StateFlow<OrderQueueUiState> = combine(
         authRepository.session,
         orderRepository.pendingOrders,
         storeStatusRepository.acceptingOrders,
         dashboardStats,
-    ) { session, orders, accepting, stats ->
+        combine(isOpeningDrawer, drawerFeedback, ::Pair),
+    ) { session, orders, accepting, stats, drawer ->
         OrderQueueUiState(
             session = session,
             pendingOrders = orders.sortedBy { it.createdAt },
             acceptingOrders = accepting,
             stats = stats,
+            isOpeningDrawer = drawer.first,
+            drawerFeedback = drawer.second,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), OrderQueueUiState())
 
@@ -137,8 +149,25 @@ class OrderQueueViewModel @Inject constructor(
 
     /** Manual kick — same call the till already fires automatically on a completed cash
      * payment (see NewOrderViewModel.submitOrder()), for when staff need the drawer open
-     * without ringing up an order (e.g. making change). */
+     * without ringing up an order (e.g. making change). Ignores a tap while already running
+     * so a staff member mashing the button doesn't queue up several reconnect attempts. */
     fun openCashDrawer() {
-        viewModelScope.launch { printerService.openCashDrawer() }
+        if (isOpeningDrawer.value) return
+        viewModelScope.launch {
+            isOpeningDrawer.value = true
+            drawerFeedback.value = null
+
+            val result = printerService.openCashDrawer()
+            val feedback = result.fold(
+                onSuccess = { DrawerFeedback("Cash drawer opened.", isError = false) },
+                onFailure = { DrawerFeedback(it.message ?: "Couldn't open the cash drawer.", isError = true) },
+            )
+            drawerFeedback.value = feedback
+            isOpeningDrawer.value = false
+
+            delay(4000)
+            // Only clear if nothing newer replaced it (e.g. a second tap right after).
+            if (drawerFeedback.value === feedback) drawerFeedback.value = null
+        }
     }
 }

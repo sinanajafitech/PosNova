@@ -1,6 +1,7 @@
 package com.cyebrcina.pos.printer.imin
 
 import android.content.Context
+import android.util.Log
 import com.cyebrcina.pos.printer.model.PrintAlign
 import com.cyebrcina.pos.printer.model.PrintCommand
 import com.cyebrcina.pos.printer.model.PrintDocument
@@ -14,6 +15,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
@@ -38,6 +40,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 class IminBuiltInPrinter @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
+    private val TAG = "IminBuiltInPrinter"
+
     @Volatile
     private var isConnected = false
 
@@ -52,17 +56,20 @@ class IminBuiltInPrinter @Inject constructor(
         val callback = object : InitPrinterCallback {
             override fun onConnected() {
                 isConnected = true
+                Log.i(TAG, "connect: bound to com.imin.printerservice")
                 if (continuation.isActive) continuation.resume(Result.success(Unit))
             }
 
             override fun onDisconnected() {
                 isConnected = false
+                Log.w(TAG, "connect: com.imin.printerservice disconnected")
                 if (continuation.isActive) {
                     continuation.resume(Result.failure(IllegalStateException("Imin printer service disconnected")))
                 }
             }
         }
         val bindSubmitted = PrinterHelper.getInstance().initPrinterService(context, callback)
+        Log.i(TAG, "connect: bind request submitted=$bindSubmitted")
         if (!bindSubmitted && continuation.isActive) {
             continuation.resume(
                 Result.failure(IllegalStateException("Couldn't bind com.imin.printerservice — is it installed/running on this device?")),
@@ -120,15 +127,56 @@ class IminBuiltInPrinter @Inject constructor(
     }
 
     /**
-     * `openDrawer(fd)` in the underlying AIDL is fire-and-forget (no result callback), so this
-     * can only report whether the call was issued, not whether the drawer physically opened.
+     * `openDrawer(fd)` in the underlying AIDL is `void` and swallows its own RemoteException
+     * internally (PrinterHelper.java: catches, calls `e.printStackTrace()`, never rethrows) —
+     * so a Kotlin-side `runCatching` around it can never observe a failure; it always looks
+     * like it "worked" even when nothing happened. The only signal this SDK actually exposes
+     * is `getOpenDrawerTimes()`, a counter that increments each time a kick genuinely reaches
+     * the hardware — so this compares that counter before/after the call and treats "counter
+     * didn't move" as the real failure signal, rather than reporting blind success.
+     *
+     * Also reconnects and retries once if the counter didn't move — the built-in printer
+     * service can die (killed under memory pressure, or between a receipt print and a later
+     * manual drawer-open) while `isConnected` still reads true from the last successful
+     * connect, which would otherwise make every kick after that point a permanently silent
+     * no-op with no way to recover short of restarting the app.
      */
     suspend fun openCashDrawer(): Result<Unit> {
         if (!isConnected) {
             val connected = connect()
             if (connected.isFailure) return connected
         }
-        return runCatching { PrinterHelper.getInstance().openDrawer() }
+
+        if (tryKickAndVerify()) return Result.success(Unit)
+
+        Log.w(TAG, "openCashDrawer: drawer counter didn't move — reconnecting and retrying once")
+        isConnected = false
+        val reconnected = connect()
+        if (reconnected.isFailure) {
+            return Result.failure(
+                reconnected.exceptionOrNull() ?: IllegalStateException("Couldn't reconnect to the printer service"),
+            )
+        }
+
+        if (tryKickAndVerify()) return Result.success(Unit)
+
+        Log.e(TAG, "openCashDrawer: still no change after reconnect — is the drawer cable plugged into the printer's RJ11/RJ12 port?")
+        return Result.failure(
+            IllegalStateException("The printer didn't confirm the drawer opened — check its cable is plugged into the RJ11/RJ12 port."),
+        )
+    }
+
+    /** Fires the kick and confirms it via the before/after counter. -1 means the SDK itself
+     * couldn't read the counter (not bound / dead service) — never treated as "it moved". */
+    private suspend fun tryKickAndVerify(): Boolean {
+        val before = PrinterHelper.getInstance().getOpenDrawerTimes()
+        PrinterHelper.getInstance().openDrawer()
+        // openDrawer() doesn't block on the hardware acknowledging the kick — give the AIDL
+        // round-trip a moment before re-reading the counter.
+        delay(150)
+        val after = PrinterHelper.getInstance().getOpenDrawerTimes()
+        Log.i(TAG, "openCashDrawer: drawer-open counter $before -> $after")
+        return after >= 0 && after > before
     }
 
     private suspend fun printText(text: PrintCommand.Text): Boolean {
