@@ -1,6 +1,7 @@
 package com.cyebrcina.pos.printer.imin
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.util.Log
 import com.cyebrcina.pos.printer.model.PrintAlign
 import com.cyebrcina.pos.printer.model.PrintCommand
@@ -26,8 +27,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * (github.com/iminsoftware/IminPrinterLibrary) — their hosted docs at oss-sg.imin.sg link out to
  * PDFs this environment couldn't open, so `PrinterHelper.java` / `INeoPrinterService` (the AIDL
  * interface) were read as the actual source of truth instead of guessing from the docs page.
- * Real API, but **not exercised on physical D4 hardware from here** — two specific things are
- * inferred rather than documented and worth confirming on-device:
+ * Real API, but **not exercised on physical D4 hardware from here** — several things are
+ * inferred rather than confirmed on-device:
  *  - Alignment ints (`printTextWithAli`, `printQrCodeWithAlign`, ...) are assumed to match
  *    `com.imin.printer.enums.Align`'s ordinal (DEFAULT=0, LEFT=1, CENTER=2, RIGHT=3) — the
  *    source uses a raw `int` param with no documented mapping, this is inferred from the enum's
@@ -35,12 +36,23 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  *  - `getPrinterStatus()`'s return value has no status-code enum anywhere in the library, so it
  *    isn't used here at all — connection state is tracked from `InitPrinterCallback` only
  *    (bound/not bound), not fine-grained states like paper-out.
+ *  - **`PRINTER_SERVICE_PACKAGE`'s value comes from library V2.0.0.19's own hardcoded
+ *    `NeoPrinterManager.bindService()` source — not confirmed against this specific unit's
+ *    actual firmware.** On real hardware where the bind still fails after the `<queries>` fix
+ *    in AndroidManifest.xml, `connect()` below now checks the package directly via
+ *    PackageManager and reports whether it's genuinely absent vs present-but-refusing, since
+ *    those need different fixes (wrong package name for this device/firmware generation, vs. a
+ *    permission/signature mismatch) and guessing which one blind wastes a fix cycle each time.
  */
 @Singleton
 class IminBuiltInPrinter @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     private val TAG = "IminBuiltInPrinter"
+
+    companion object {
+        private const val PRINTER_SERVICE_PACKAGE = "com.imin.printerservice"
+    }
 
     @Volatile
     private var isConnected = false
@@ -52,28 +64,60 @@ class IminBuiltInPrinter @Inject constructor(
         this.paperSize = paperSize
     }
 
+    /** What a failed bind actually means — these need different fixes, and blindly reporting
+     * "not installed" (the old message) was a guess I had no way to back up. This checks the
+     * package directly via PackageManager so the failure message tells the truth instead. */
+    private sealed class PrinterServicePackageState {
+        data class Found(val versionName: String?) : PrinterServicePackageState()
+        data object NotFound : PrinterServicePackageState()
+        data class CheckFailed(val reason: String) : PrinterServicePackageState()
+    }
+
+    private fun checkPrinterServicePackage(): PrinterServicePackageState = try {
+        val info = context.packageManager.getPackageInfo(PRINTER_SERVICE_PACKAGE, 0)
+        PrinterServicePackageState.Found(info.versionName)
+    } catch (e: PackageManager.NameNotFoundException) {
+        PrinterServicePackageState.NotFound
+    } catch (e: Exception) {
+        // Most likely this app's own <queries> declaration is missing/wrong — without it,
+        // PackageManager can't even answer "is it installed" truthfully, let alone bind to it.
+        PrinterServicePackageState.CheckFailed(e.message ?: e.javaClass.simpleName)
+    }
+
     suspend fun connect(): Result<Unit> = suspendCancellableCoroutine { continuation ->
+        val packageState = checkPrinterServicePackage()
+        Log.i(TAG, "connect: $PRINTER_SERVICE_PACKAGE package check -> $packageState")
+
         val callback = object : InitPrinterCallback {
             override fun onConnected() {
                 isConnected = true
-                Log.i(TAG, "connect: bound to com.imin.printerservice")
+                Log.i(TAG, "connect: bound to $PRINTER_SERVICE_PACKAGE")
                 if (continuation.isActive) continuation.resume(Result.success(Unit))
             }
 
             override fun onDisconnected() {
                 isConnected = false
-                Log.w(TAG, "connect: com.imin.printerservice disconnected")
+                Log.w(TAG, "connect: $PRINTER_SERVICE_PACKAGE disconnected")
                 if (continuation.isActive) {
                     continuation.resume(Result.failure(IllegalStateException("Imin printer service disconnected")))
                 }
             }
         }
         val bindSubmitted = PrinterHelper.getInstance().initPrinterService(context, callback)
-        Log.i(TAG, "connect: bind request submitted=$bindSubmitted")
+        Log.i(TAG, "connect: bind request submitted=$bindSubmitted (package check was: $packageState)")
         if (!bindSubmitted && continuation.isActive) {
-            continuation.resume(
-                Result.failure(IllegalStateException("Couldn't bind com.imin.printerservice — is it installed/running on this device?")),
-            )
+            // Three genuinely different problems that all surfaced as the same generic
+            // message before — now the on-screen error tells you which one it actually is,
+            // without needing logcat/adb access to find out.
+            val message = when (packageState) {
+                is PrinterServicePackageState.NotFound ->
+                    "$PRINTER_SERVICE_PACKAGE genuinely isn't installed on this device — this hardware may use a different printer service package than this app expects."
+                is PrinterServicePackageState.Found ->
+                    "$PRINTER_SERVICE_PACKAGE is installed (version ${packageState.versionName ?: "unknown"}) but refused the connection — likely a permission or signature mismatch, not a missing app."
+                is PrinterServicePackageState.CheckFailed ->
+                    "Couldn't even check whether $PRINTER_SERVICE_PACKAGE is installed (${packageState.reason})."
+            }
+            continuation.resume(Result.failure(IllegalStateException(message)))
         }
     }
 
