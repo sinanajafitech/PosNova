@@ -88,4 +88,15 @@ dependencies {
     // not their gated docs site) — see PRINTER_SETUP.md. Check their tags for a newer version
     // before shipping: https://github.com/iminsoftware/IminPrinterLibrary/tags
     implementation("com.github.iminsoftware:IminPrinterLibrary:V2.0.0.19")
+
+    // Imin's device-management SDK (DeviceManager, com.device.manager.sdk) — a SEPARATE service
+    // from the printer SDK above, needed for hardware confirmed NOT reachable through any
+    // printer transport: on at least one real field unit, the cash drawer is wired to a
+    // mainboard-level port controlled through this SDK's DeviceManager.sendAMCommandAsyn(),
+    // not through the printer at all (see IminPrinterService.openCashDrawer()). Verified
+    // against Imin's official docs (oss-sg.imin.sg/docs/en/SDK.html, section "Open Cash
+    // Drawer") and https://github.com/iminsoftware/IminDeviceLibrary — same JitPack publishing
+    // pattern as IminPrinterLibrary above. Check their tags before shipping:
+    // https://github.com/iminsoftware/IminDeviceLibrary/tags
+    implementation("com.github.iminsoftware:IminDeviceLibrary:v3.0.0")
 }

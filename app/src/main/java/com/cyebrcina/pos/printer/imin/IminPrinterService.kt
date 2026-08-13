@@ -41,6 +41,7 @@ import kotlinx.coroutines.withContext
 class IminPrinterService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val builtInPrinter: IminBuiltInPrinter,
+    private val deviceManagerCashDrawer: IminDeviceManagerCashDrawer,
 ) : PrinterService {
 
     private val TAG = "IminPrinterService"
@@ -279,16 +280,23 @@ class IminPrinterService @Inject constructor(
     }
 
     override suspend fun openCashDrawer(): Result<Unit> {
-        // The drawer is physically wired through whatever printer is actually connected
-        // and printing receipts — NOT necessarily reachable through Imin/Neostra's own
-        // AIDL printer service. That AIDL path (IminBuiltInPrinter, PrinterConnection.
-        // BuiltIn) is real and correct on genuine Imin/Neostra hardware that has it
-        // installed, but confirmed absent entirely on at least one real unit in the field
-        // (`adb shell dumpsys package` showed no bindable service under either of that
-        // unit's printer-related packages) — where receipts print fine over a plain
-        // Bluetooth/USB/network connection instead, and the drawer, wired through that
-        // same physical printer, needs the raw ESC/POS kick command sent the same way.
-        val printer = selectedPrinter ?: return Result.failure(IllegalStateException("No printer selected"))
+        // Tried first, independent of whichever printer is selected — on at least one real
+        // field unit the drawer is wired to a mainboard-level port (physically next to the
+        // power input, not the printer) controlled entirely through Imin's separate
+        // device-management SDK, confirmed via a real bindable service found on-device
+        // (`com.imin.iotdeviceservice`/IoTMainService) where the unit's printer packages had
+        // none at all — and sending the standard ESC/POS kick to that unit's printer (over
+        // USB, confirmed otherwise working for receipts) reached the printer fine but never
+        // opened the drawer, since it was never wired to the printer in the first place. See
+        // IminDeviceManagerCashDrawer's own doc comment for the full evidence trail.
+        val deviceManagerResult = deviceManagerCashDrawer.openCashDrawer()
+        if (deviceManagerResult.isSuccess) return deviceManagerResult
+        Log.w(TAG, "openCashDrawer: device-manager path failed (${deviceManagerResult.exceptionOrNull()?.message}), falling back to the printer connection")
+
+        // Fallback for hardware where the drawer genuinely IS wired through the printer
+        // instead (the original assumption this file used before the above was added) —
+        // still valid on other Imin/Neostra units that don't have the mainboard-level path.
+        val printer = selectedPrinter ?: return deviceManagerResult
 
         if (printer.connection is PrinterConnection.BuiltIn) {
             return builtInPrinter.openCashDrawer()
