@@ -76,6 +76,13 @@ object EscPosEncoder {
         return out.toByteArray()
     }
 
-    /** ESC p 0 25 250 — the standard cash-drawer kick command most ESC/POS printers pass straight through. */
-    val cashDrawerKick: ByteArray = byteArrayOf(0x1B, 0x70, 0x00, 0x19, 0xFA.toByte())
+    /** ESC p m t1 t2 — the standard cash-drawer kick command. `m` selects which of the two pins
+     * on the RJ11/RJ12 connector to pulse (0 = pin 2, 1 = pin 5) — different printer/drawer
+     * combos wire the drawer to either one, and there's no way to query which from software, so
+     * this sends both. A printer/drawer only wired to one pin simply ignores the pulse meant for
+     * the other — harmless, not a double-kick a customer would ever notice. */
+    val cashDrawerKick: ByteArray = cashDrawerKickPulse(pin = 0) + cashDrawerKickPulse(pin = 1)
+
+    private fun cashDrawerKickPulse(pin: Int): ByteArray =
+        byteArrayOf(0x1B, 0x70, pin.toByte(), 0x19, 0xFA.toByte())
 }
