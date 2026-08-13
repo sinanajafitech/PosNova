@@ -532,6 +532,12 @@ class NewOrderViewModel @Inject constructor(
                 customerDisplayManager.update(
                     CustomerDisplayState.NewOrderReceived(order.number),
                 )
+                // Best-effort, like the receipt/ticket printing below — the drawer is wired
+                // through the Imin device's own built-in RJ11/RJ12 port (PrinterService's
+                // BuiltIn path), so a failed kick shouldn't fail an already-successful order.
+                if (payment.method == "CASH") {
+                    viewModelScope.launch { printerService.openCashDrawer() }
+                }
                 printReceiptAndTicket(order.id)
             }
             .onFailure { err -> submitError.value = err.message ?: "Couldn't submit the order" }
