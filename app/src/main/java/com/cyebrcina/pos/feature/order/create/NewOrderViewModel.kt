@@ -304,6 +304,8 @@ class NewOrderViewModel @Inject constructor(
             is NewOrderEntryIntent.StartAtTable -> startOrder(TillOrderType.DINE_IN, "Walk-in", 1, intent.table)
             is NewOrderEntryIntent.ResumeHeldOrder -> resumeHeldOrder(intent.heldOrderId)
             is NewOrderEntryIntent.StartFromCall -> startOrderFromCall(intent.callerName, intent.phone, intent.callLogId)
+            is NewOrderEntryIntent.RepeatOrderFromCall ->
+                repeatOrderFromCall(intent.callerName, intent.phone, intent.callLogId, intent.orderId)
             null -> Unit
         }
 
@@ -354,6 +356,34 @@ class NewOrderViewModel @Inject constructor(
         guestCount.value = 1
         tableLabel.value = null
         hasStartedOrder.value = true
+    }
+
+    /** "Repeat Last Order" from the Incoming Call popup — starts the same COLLECTION flow as
+     * [startOrderFromCall], then drops that order's items into the cart for staff to review/edit
+     * before submitting (never resubmits the old order directly — pricing/availability are
+     * re-checked against the live menu, same as any other till order). An item whose product's
+     * since been 86'd, or whose size/add-on can no longer be matched, is silently skipped rather
+     * than failing the whole prefill — staff can always add it back manually if it's actually
+     * still available. */
+    private fun repeatOrderFromCall(callerName: String?, phone: String, callLogId: String?, orderId: String) {
+        startOrderFromCall(callerName, phone, callLogId)
+        viewModelScope.launch {
+            if (menuRepository.categories.value.isEmpty()) {
+                menuRepository.refresh().onFailure { menuError.value = it.message }
+            }
+            val response = orderRepository.repeatOrder(orderId).getOrNull() ?: return@launch
+            val allProducts = menuRepository.categories.value.flatMap { it.products }
+            val allAddOns = menuRepository.addOns.value
+
+            val newItems = response.items.mapNotNull { item ->
+                if (!item.available) return@mapNotNull null
+                val product = allProducts.firstOrNull { it.id == item.productId } ?: return@mapNotNull null
+                val size = item.sizeId?.let { sizeId -> product.sizes.firstOrNull { it.id == sizeId } }
+                val addOns = item.addOnIds.mapNotNull { addOnId -> allAddOns.firstOrNull { it.id == addOnId } }
+                CartItem(product = product, size = size, addOns = addOns, quantity = item.quantity, notes = item.notes)
+            }
+            cart.update { it + newItems }
+        }
     }
 
     fun onChooseTableRequested() = showChooseTable.update { true }

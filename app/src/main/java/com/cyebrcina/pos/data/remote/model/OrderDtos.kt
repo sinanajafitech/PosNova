@@ -113,3 +113,29 @@ data class AcceptOrderResponse(
 data class RejectOrderResponse(
     val ok: Boolean = false,
 )
+
+/** One line item from a past order, returned by `GET /api/device/orders/repeat/{id}` for the
+ * Incoming Call popup's "Repeat Last Order" action — carries the real productId/sizeId/addOnIds
+ * so [com.cyebrcina.pos.feature.order.create.NewOrderViewModel] can look them up against the
+ * currently loaded menu and drop them into a fresh cart. [available] is false if the product's
+ * since been 86'd or an add-on disabled — surfaced so staff know to double-check that line. */
+@Serializable
+data class RepeatOrderItem(
+    val productId: String,
+    val productName: String,
+    val sizeId: String? = null,
+    val sizeLabel: String? = null,
+    val quantity: Int,
+    val addOnIds: List<String> = emptyList(),
+    val addOnNames: List<String> = emptyList(),
+    val notes: String? = null,
+    val available: Boolean = true,
+)
+
+@Serializable
+data class RepeatOrderResponse(
+    val orderId: String,
+    val orderNumber: String,
+    val createdAt: String,
+    val items: List<RepeatOrderItem> = emptyList(),
+)

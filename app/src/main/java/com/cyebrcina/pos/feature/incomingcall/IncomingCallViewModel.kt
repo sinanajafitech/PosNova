@@ -68,6 +68,17 @@ class IncomingCallViewModel @Inject constructor(
         dismissCurrent()
     }
 
+    /** "Repeat Last Order" — only meaningful when the caller's profile resolved a real
+     * [IncomingCallEvent.lastOrder] (see Admin's lib/customer-profile.ts). */
+    fun repeatLastOrder() {
+        val call = queue.value.firstOrNull() ?: return
+        val lastOrderId = call.lastOrder?.id ?: return
+        entryCoordinator.setPending(
+            NewOrderEntryIntent.RepeatOrderFromCall(call.callerName, call.phone, call.callLogId, lastOrderId),
+        )
+        dismissCurrent()
+    }
+
     fun saveContact(name: String, address: String, notes: String) {
         val phone = queue.value.firstOrNull()?.phone ?: return
         viewModelScope.launch {

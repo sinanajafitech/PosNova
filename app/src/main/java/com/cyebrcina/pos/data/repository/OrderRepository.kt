@@ -8,6 +8,7 @@ import com.cyebrcina.pos.data.remote.model.KitchenTicketData
 import com.cyebrcina.pos.data.remote.model.PaymentLinkResponse
 import com.cyebrcina.pos.data.remote.model.ReceiptData
 import com.cyebrcina.pos.data.remote.model.ReceiptPrefs
+import com.cyebrcina.pos.data.remote.model.RepeatOrderResponse
 import com.cyebrcina.pos.payment.model.CardChargeResult
 import kotlinx.coroutines.flow.StateFlow
 
@@ -41,4 +42,8 @@ interface OrderRepository {
 
     /** Real, live — creates a scan-to-pay QR for an order's outstanding balance. */
     suspend fun requestPaymentLink(orderId: String): Result<PaymentLinkResponse>
+
+    /** Real, live — a past order's line items (with real productId/sizeId/addOnIds), for the
+     * Incoming Call popup's "Repeat Last Order" action. */
+    suspend fun repeatOrder(orderId: String): Result<RepeatOrderResponse>
 }

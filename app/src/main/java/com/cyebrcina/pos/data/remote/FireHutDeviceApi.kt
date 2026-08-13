@@ -19,6 +19,7 @@ import com.cyebrcina.pos.data.remote.model.PaymentLinkResponse
 import com.cyebrcina.pos.data.remote.model.PendingOrdersResponse
 import com.cyebrcina.pos.data.remote.model.ReceiptData
 import com.cyebrcina.pos.data.remote.model.RejectOrderResponse
+import com.cyebrcina.pos.data.remote.model.RepeatOrderResponse
 import com.cyebrcina.pos.data.remote.model.SavePhoneContactRequest
 import com.cyebrcina.pos.data.remote.model.SavePhoneContactResponse
 import com.cyebrcina.pos.data.remote.model.KitchenTicketData
@@ -123,4 +124,9 @@ interface FireHutDeviceApi {
     /** Real, live. 86s a product or brings it back — the till's own Tools/86 Board. */
     @POST("api/device/menu/products/{id}/toggle-sold-out")
     suspend fun toggleProductSoldOut(@Path("id") productId: String): Response<ToggleSoldOutResponse>
+
+    /** Real, live. A past order's line items (with productId/sizeId/addOnIds), for the Incoming
+     * Call popup's "Repeat Last Order" action. */
+    @GET("api/device/orders/repeat/{id}")
+    suspend fun repeatOrder(@Path("id") orderId: String): Response<RepeatOrderResponse>
 }

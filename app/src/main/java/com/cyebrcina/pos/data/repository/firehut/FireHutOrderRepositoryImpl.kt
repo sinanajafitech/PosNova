@@ -12,6 +12,7 @@ import com.cyebrcina.pos.data.remote.model.PaymentLinkResponse
 import com.cyebrcina.pos.data.remote.model.KitchenTicketData
 import com.cyebrcina.pos.data.remote.model.ReceiptData
 import com.cyebrcina.pos.data.remote.model.ReceiptPrefs
+import com.cyebrcina.pos.data.remote.model.RepeatOrderResponse
 import com.cyebrcina.pos.data.remote.realtime.FireHutRealtimeManager
 import com.cyebrcina.pos.data.repository.OrderRepository
 import com.cyebrcina.pos.payment.model.CardChargeResult
@@ -142,6 +143,12 @@ class FireHutOrderRepositoryImpl @Inject constructor(
 
     override suspend fun requestPaymentLink(orderId: String): Result<PaymentLinkResponse> = runCatching {
         val response = api.paymentLink(orderId)
+        if (!response.isSuccessful) throw IllegalStateException(response.errorMessageOrDefault(json))
+        response.body() ?: throw IllegalStateException("Empty response")
+    }.recoverCatching { throw mapNetworkError(it) }
+
+    override suspend fun repeatOrder(orderId: String): Result<RepeatOrderResponse> = runCatching {
+        val response = api.repeatOrder(orderId)
         if (!response.isSuccessful) throw IllegalStateException(response.errorMessageOrDefault(json))
         response.body() ?: throw IllegalStateException("Empty response")
     }.recoverCatching { throw mapNetworkError(it) }

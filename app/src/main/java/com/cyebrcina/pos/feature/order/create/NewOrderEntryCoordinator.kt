@@ -9,6 +9,11 @@ sealed interface NewOrderEntryIntent {
     data class ResumeHeldOrder(val heldOrderId: String) : NewOrderEntryIntent
     /** "Take Order" tapped on the Incoming Call popup — see [com.cyebrcina.pos.feature.incomingcall.IncomingCallViewModel]. */
     data class StartFromCall(val callerName: String?, val phone: String, val callLogId: String?) : NewOrderEntryIntent
+
+    /** "Repeat Last Order" tapped on the Incoming Call popup — same as [StartFromCall] but also
+     * pre-fills the cart from [orderId]'s items (fetched fresh via OrderRepository.repeatOrder,
+     * matched against the currently loaded menu — see NewOrderViewModel.startOrderFromCall). */
+    data class RepeatOrderFromCall(val callerName: String?, val phone: String, val callLogId: String?, val orderId: String) : NewOrderEntryIntent
 }
 
 /**
