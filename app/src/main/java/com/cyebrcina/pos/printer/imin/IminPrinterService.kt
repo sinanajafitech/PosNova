@@ -279,16 +279,55 @@ class IminPrinterService @Inject constructor(
     }
 
     override suspend fun openCashDrawer(): Result<Unit> {
-        // The D4's cash drawer kick-out circuit is wired through the device's
-        // own built-in thermal printer — physically independent of whatever
-        // printer (if any) is configured for receipts. Previously this
-        // routed through `selectedPrinter`, which meant a till with no
-        // printer selected yet failed outright ("No printer selected"), and
-        // a till configured to print receipts to an external Bluetooth/USB/
-        // network printer would kick that printer's port instead of the
-        // D4's own — the wrong drawer, or no drawer at all, on real
-        // hardware. Always goes through Imin's own SDK (openDrawer(), via
-        // IminBuiltInPrinter) regardless of the selected receipt printer.
-        return builtInPrinter.openCashDrawer()
+        // The drawer is physically wired through whatever printer is actually connected
+        // and printing receipts — NOT necessarily reachable through Imin/Neostra's own
+        // AIDL printer service. That AIDL path (IminBuiltInPrinter, PrinterConnection.
+        // BuiltIn) is real and correct on genuine Imin/Neostra hardware that has it
+        // installed, but confirmed absent entirely on at least one real unit in the field
+        // (`adb shell dumpsys package` showed no bindable service under either of that
+        // unit's printer-related packages) — where receipts print fine over a plain
+        // Bluetooth/USB/network connection instead, and the drawer, wired through that
+        // same physical printer, needs the raw ESC/POS kick command sent the same way.
+        val printer = selectedPrinter ?: return Result.failure(IllegalStateException("No printer selected"))
+
+        if (printer.connection is PrinterConnection.BuiltIn) {
+            return builtInPrinter.openCashDrawer()
+        }
+
+        // Same reconnect-if-needed guard print() uses — the drawer kick rides the same
+        // connection as receipt printing, so it needs to be live the same way.
+        if (_status.value != PrinterStatus.READY) {
+            connect()
+            if (_status.value != PrinterStatus.READY) return Result.failure(IllegalStateException("Printer not ready"))
+        }
+
+        return withContext(Dispatchers.IO) {
+            val kickCommand = EscPosEncoder.cashDrawerKick
+            runCatching {
+                when (val connection = printer.connection) {
+                    is PrinterConnection.Bluetooth -> {
+                        val socket = bluetoothSocket ?: throw IllegalStateException("Not connected")
+                        socket.outputStream.write(kickCommand)
+                        socket.outputStream.flush()
+                    }
+                    is PrinterConnection.Usb -> {
+                        val conn = usbConnection ?: throw IllegalStateException("USB not connected")
+                        val ep = usbEndpoint ?: throw IllegalStateException("USB endpoint null")
+                        conn.bulkTransfer(ep, kickCommand, kickCommand.size, 1000)
+                    }
+                    is PrinterConnection.Network -> {
+                        val socket = networkSocket ?: throw IllegalStateException("Not connected")
+                        socket.getOutputStream().write(kickCommand)
+                        socket.getOutputStream().flush()
+                    }
+                    is PrinterConnection.BuiltIn -> error("unreachable — handled above")
+                }
+                Log.i(TAG, "openCashDrawer: kick command sent over ${printer.connection}")
+                Result.success(Unit)
+            }.getOrElse {
+                Log.e(TAG, "openCashDrawer: failed to send kick command", it)
+                Result.failure(it)
+            }
+        }
     }
 }
