@@ -11,6 +11,7 @@ import com.cyebrcina.pos.data.repository.AuthRepository
 import com.cyebrcina.pos.data.repository.OrderRepository
 import com.cyebrcina.pos.data.repository.ReportRepository
 import com.cyebrcina.pos.data.repository.StoreStatusRepository
+import com.cyebrcina.pos.printer.PrinterService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalDate
 import javax.inject.Inject
@@ -55,6 +56,7 @@ class OrderQueueViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val customerDisplayManager: CustomerDisplayManager,
     private val reportRepository: ReportRepository,
+    private val printerService: PrinterService,
 ) : ViewModel() {
 
     private val dashboardStats = MutableStateFlow(DashboardStats())
@@ -131,5 +133,12 @@ class OrderQueueViewModel @Inject constructor(
             storeStatusRepository.refresh()
             loadDashboardStats()
         }
+    }
+
+    /** Manual kick — same call the till already fires automatically on a completed cash
+     * payment (see NewOrderViewModel.submitOrder()), for when staff need the drawer open
+     * without ringing up an order (e.g. making change). */
+    fun openCashDrawer() {
+        viewModelScope.launch { printerService.openCashDrawer() }
     }
 }

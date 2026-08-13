@@ -1,6 +1,7 @@
 package com.cyebrcina.pos.feature.order.list
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restaurant
@@ -36,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,6 +48,7 @@ import com.cyebrcina.pos.core.components.EmptyState
 import com.cyebrcina.pos.core.components.StatCard
 import com.cyebrcina.pos.core.components.StatusBadge
 import com.cyebrcina.pos.core.theme.PosColors
+import com.cyebrcina.pos.core.theme.PosRadius
 import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
 import com.cyebrcina.pos.core.util.asCurrency
@@ -97,11 +101,14 @@ fun OrderQueueScreen(
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Today", style = PosTextStyles.h5, color = PosColors.Neutral13)
-                    FlowPrimaryButton(
-                        text = "Add New Order",
-                        onClick = onAddNewOrder,
-                        leadingIcon = { Icon(Icons.Filled.AddCircle, contentDescription = null, tint = PosColors.White, modifier = Modifier.size(18.dp)) },
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                        SquareIconButton(icon = Icons.Filled.PointOfSale, contentDescription = "Open Cash Drawer", onClick = viewModel::openCashDrawer)
+                        FlowPrimaryButton(
+                            text = "Add New Order",
+                            onClick = onAddNewOrder,
+                            leadingIcon = { Icon(Icons.Filled.AddCircle, contentDescription = null, tint = PosColors.White, modifier = Modifier.size(18.dp)) },
+                        )
+                    }
                 }
             }
 
@@ -221,6 +228,22 @@ private fun TopProductsCard(products: List<TopProduct>, modifier: Modifier = Mod
                 }
             }
         }
+    }
+}
+
+/** A square (not pill-shaped) icon-only action button, matched to FlowPrimaryButton's
+ * 54.dp height so it sits flush next to it. */
+@Composable
+private fun SquareIconButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(54.dp)
+            .clip(RoundedCornerShape(PosRadius.lg))
+            .background(PosColors.Blue500)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = PosColors.White, modifier = Modifier.size(24.dp))
     }
 }
 
