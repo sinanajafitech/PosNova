@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as lazyListItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -25,8 +24,10 @@ import androidx.compose.foundation.lazy.grid.items as lazyGridItems
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -38,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -53,6 +55,11 @@ import com.cyebrcina.pos.core.util.asCurrency
 import com.cyebrcina.pos.data.remote.model.MenuCategory
 import com.cyebrcina.pos.data.remote.model.MenuProduct
 
+/** Admin's category `color` is always a native `<input type="color">` value ("#RRGGBB"), but
+ * parsed defensively since a hand-edited/legacy row could in principle hold anything. */
+private fun parseCategoryColor(hex: String): Color =
+    runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(PosColors.Blue500)
+
 @Composable
 fun NewOrderScreen(
     onCheckout: () -> Unit,
@@ -65,8 +72,6 @@ fun NewOrderScreen(
     Scaffold(topBar = { PosTopBar(title = "New Order") }) { padding ->
         Row(Modifier.fillMaxSize().padding(padding)) {
             Column(Modifier.weight(1f).fillMaxHeight()) {
-                CategoryRow(state, viewModel)
-                Spacer(Modifier.height(Spacing.xs))
                 when {
                     state.isLoadingMenu -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PosColors.Blue500) }
                     state.menuError != null -> EmptyState(
@@ -74,7 +79,14 @@ fun NewOrderScreen(
                         title = "Couldn't load the menu",
                         description = state.menuError.orEmpty(),
                     )
-                    else -> ProductGrid(state, viewModel)
+                    // Step 1: pick a category from the grid. Step 2 (below): browse its items.
+                    state.selectedCategoryId == null -> CategoryGrid(state, viewModel)
+                    else -> {
+                        val selectedCategory = state.categories.firstOrNull { it.id == state.selectedCategoryId }
+                        CategoryHeader(category = selectedCategory, onBack = { viewModel.onCategorySelected(null) })
+                        Spacer(Modifier.height(Spacing.xs))
+                        ProductGrid(state, viewModel)
+                    }
                 }
             }
             CartPanel(
@@ -116,29 +128,83 @@ fun NewOrderScreen(
     }
 }
 
+/** Step 1 of the New Order flow: pick a category before browsing its items — tapping a tile
+ * drills into [ProductGrid] for just that category (see the `when` in [NewOrderScreen]). */
 @Composable
-private fun CategoryRow(state: NewOrderUiState, viewModel: NewOrderViewModel) {
-    LazyRow(
+private fun CategoryGrid(state: NewOrderUiState, viewModel: NewOrderViewModel) {
+    if (state.categories.isEmpty()) {
+        EmptyState(icon = Icons.Filled.Restaurant, title = "No categories", description = "Nothing on the menu yet.")
+        return
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 200.dp),
         contentPadding = PaddingValues(Spacing.sm),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        lazyGridItems(state.categories, key = { it.id }) { category ->
+            CategoryTile(category = category, onClick = { viewModel.onCategorySelected(category.id) })
+        }
+    }
+}
+
+/** Matches [ProductTile]'s card proportions (r=20, white bg, thin border) so the two grid steps
+ * feel like one continuous flow — the color swatch takes the image slot. */
+@Composable
+private fun CategoryTile(category: MenuCategory, onClick: () -> Unit) {
+    val color = parseCategoryColor(category.color)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(PosColors.White)
+            .border(1.dp, PosColors.Neutral4, RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .padding(Spacing.xs),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(120.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(color),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (category.imageUrl != null) {
+                AsyncImage(
+                    model = imageModel(category.imageUrl),
+                    contentDescription = category.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),
+                )
+            } else {
+                Text(category.name.take(1).ifBlank { "•" }, style = PosTextStyles.h2, color = PosColors.White)
+            }
+        }
+        Spacer(Modifier.height(Spacing.xxs))
+        Text(category.name, style = PosTextStyles.bodySmallMedium, color = PosColors.Neutral12, maxLines = 1)
+        Spacer(Modifier.height(Spacing.xxxs))
+        Text("${category.products.size} Items", style = PosTextStyles.bodyXSmallRegular, color = PosColors.TextSecondary)
+    }
+}
+
+/** Step 2's header: back to the category grid, plus the category's own color/name so it's
+ * clear which category is being browsed. */
+@Composable
+private fun CategoryHeader(category: MenuCategory?, onBack: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
-        item {
-            CategoryChip(
-                icon = "🍽️",
-                name = "All Menu",
-                count = state.categories.sumOf { it.products.size },
-                selected = state.selectedCategoryId == null,
-                onClick = { viewModel.onCategorySelected(null) },
-            )
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to categories", tint = PosColors.Neutral12)
         }
-        lazyListItems(state.categories, key = { it.id }) { category ->
-            CategoryChip(
-                icon = category.name.take(1).ifBlank { "•" },
-                name = category.name,
-                count = category.products.size,
-                selected = state.selectedCategoryId == category.id,
-                onClick = { viewModel.onCategorySelected(category.id) },
-            )
+        if (category != null) {
+            Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(parseCategoryColor(category.color)))
+            Text(category.name, style = PosTextStyles.h6, color = PosColors.Neutral12)
+            Text("${category.products.size} Items", style = PosTextStyles.bodySmallRegular, color = PosColors.TextSecondary)
         }
     }
 }

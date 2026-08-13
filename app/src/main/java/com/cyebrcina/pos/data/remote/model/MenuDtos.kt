@@ -39,6 +39,9 @@ data class MenuCategory(
     val name: String,
     val description: String? = null,
     val imageUrl: String? = null,
+    /** Hex string (e.g. "#2D71F7"), admin-set — see Category.color in Admin's schema. Shown
+     * behind this category's tile on the till's category-select grid. */
+    val color: String = "#2D71F7",
     val products: List<MenuProduct> = emptyList(),
 )
 
