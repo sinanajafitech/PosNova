@@ -6,6 +6,8 @@ import com.cyebrcina.pos.data.local.CurrentStaff
 import com.cyebrcina.pos.data.local.CurrentStaffStore
 import com.cyebrcina.pos.data.local.KitchenPrinterConnectionType
 import com.cyebrcina.pos.data.local.KitchenPrinterSettings
+import com.cyebrcina.pos.data.local.OfflineSyncManager
+import com.cyebrcina.pos.data.local.OfflineSyncStatus
 import com.cyebrcina.pos.data.local.PrinterSettingsStore
 import com.cyebrcina.pos.data.model.DeviceSession
 import com.cyebrcina.pos.data.remote.model.ReceiptPrefs
@@ -54,6 +56,7 @@ data class SettingsUiState(
     val currentStaff: CurrentStaff? = null,
     val isClockingStaff: Boolean = false,
     val staffClockError: String? = null,
+    val offlineSync: OfflineSyncStatus = OfflineSyncStatus(),
 )
 
 private data class ExternalState(
@@ -93,6 +96,7 @@ class SettingsViewModel @Inject constructor(
     private val paymentTerminalService: PaymentTerminalService,
     private val staffRepository: StaffRepository,
     private val currentStaffStore: CurrentStaffStore,
+    private val offlineSyncManager: OfflineSyncManager,
 ) : ViewModel() {
 
     private val localFlags = MutableStateFlow(LocalFlags())
@@ -106,6 +110,9 @@ class SettingsViewModel @Inject constructor(
                 printerService.selectPrinter(saved)
             }
         }
+        // So "Last synced" has something to show immediately, even before staff ever tap
+        // "Download for Offline Use" this session (e.g. it happened on a previous day).
+        viewModelScope.launch { offlineSyncManager.refreshLastSyncedAt() }
     }
 
     private val externalState = combine(
@@ -131,9 +138,9 @@ class SettingsViewModel @Inject constructor(
         externalState,
         terminalState,
         orderRepository.receiptPrefs,
-        localFlags,
-        currentStaffStore.currentStaff,
-    ) { external, terminal, receiptPrefs, local, currentStaff ->
+        combine(localFlags, currentStaffStore.currentStaff, offlineSyncManager.status, ::Triple),
+    ) { external, terminal, receiptPrefs, localAndStaff ->
+        val (local, currentStaff, offlineSync) = localAndStaff
         SettingsUiState(
             session = external.session,
             printerStatus = external.printerStatus,
@@ -154,6 +161,7 @@ class SettingsViewModel @Inject constructor(
             currentStaff = currentStaff,
             isClockingStaff = local.isClockingStaff,
             staffClockError = local.staffClockError,
+            offlineSync = offlineSync,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
 
@@ -251,6 +259,12 @@ class SettingsViewModel @Inject constructor(
             storeStatusRepository.setAcceptingOrders(!current)
             localFlags.update { it.copy(isTogglingStatus = false) }
         }
+    }
+
+    /** Explicit "Download for Offline Use" action — see OfflineSyncManager's doc comment for why
+     * this is more than just re-running the menu's normal background refresh. */
+    fun syncForOffline() {
+        viewModelScope.launch { offlineSyncManager.syncForOffline() }
     }
 
     fun logout() {

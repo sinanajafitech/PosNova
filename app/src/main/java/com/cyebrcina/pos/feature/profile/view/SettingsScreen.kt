@@ -24,13 +24,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -60,9 +63,12 @@ import com.cyebrcina.pos.core.theme.PosColors
 import com.cyebrcina.pos.core.theme.PosNovaShapes
 import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
+import com.cyebrcina.pos.core.util.asDateTime
+import com.cyebrcina.pos.core.util.toInstantOrNull
 import com.cyebrcina.pos.data.local.CurrentStaff
 import com.cyebrcina.pos.data.local.KitchenPrinterConnectionType
 import com.cyebrcina.pos.data.local.KitchenPrinterSettings
+import com.cyebrcina.pos.data.local.OfflineSyncStatus
 import com.cyebrcina.pos.data.remote.model.ReceiptPrefs
 import com.cyebrcina.pos.payment.model.PaymentProvider
 import com.cyebrcina.pos.payment.model.TerminalStatus
@@ -116,6 +122,9 @@ fun SettingsScreen(
                 error = state.staffClockError,
                 onClock = viewModel::clockStaff,
             )
+
+            Spacer(Modifier.height(Spacing.lg))
+            OfflineModeSection(status = state.offlineSync, onSync = viewModel::syncForOffline)
 
             Spacer(Modifier.height(Spacing.lg))
             Row(
@@ -303,6 +312,66 @@ private fun StaffClockSection(
             Spacer(Modifier.height(Spacing.xxs))
             Text(message, style = PosTextStyles.bodyXSmallMedium, color = PosColors.Warning500)
         }
+    }
+}
+
+/**
+ * A deliberate, complete offline-readiness pass, on top of the automatic caching
+ * FireHutMenuRepositoryImpl/MenuCacheStore already do every time the menu refreshes in the
+ * background. Tapping "Download for Offline Use" refreshes the menu AND forces every product/
+ * category photo through the image loader once, so nothing shows as a broken image if the
+ * connection drops before a given item was ever actually viewed on this till — see
+ * OfflineSyncManager's doc comment for the full reasoning.
+ */
+@Composable
+private fun OfflineModeSection(status: OfflineSyncStatus, onSync: () -> Unit) {
+    Text("Offline Mode", style = PosTextStyles.h6, color = PosColors.Neutral12)
+    Spacer(Modifier.height(Spacing.xxs))
+    AppCard(modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Download for Offline Use", style = PosTextStyles.bodyMediumSemibold, color = PosColors.Neutral12)
+                Text(
+                    status.lastSyncedAt?.toInstantOrNull()?.let { "Last synced ${it.asDateTime()}" }
+                        ?: "Never synced — download the menu so this till can keep taking orders offline.",
+                    style = PosTextStyles.bodyXSmallRegular,
+                    color = PosColors.Neutral7,
+                )
+            }
+            if (status.isSyncing) {
+                CircularProgressIndicator(modifier = Modifier.height(20.dp).width(20.dp), color = PosColors.Blue500, strokeWidth = 2.dp)
+            }
+        }
+
+        if (status.isSyncing && status.totalImages > 0) {
+            Spacer(Modifier.height(Spacing.sm))
+            LinearProgressIndicator(
+                progress = { status.downloadedImages / status.totalImages.toFloat() },
+                modifier = Modifier.fillMaxWidth(),
+                color = PosColors.Blue500,
+            )
+            Spacer(Modifier.height(Spacing.xxxs))
+            Text(
+                "Downloading photos: ${status.downloadedImages}/${status.totalImages}",
+                style = PosTextStyles.bodyXSmallRegular,
+                color = PosColors.Neutral7,
+            )
+        }
+
+        status.error?.let { message ->
+            Spacer(Modifier.height(Spacing.xxs))
+            Text(message, style = PosTextStyles.bodyXSmallMedium, color = PosColors.Warning500)
+        }
+
+        Spacer(Modifier.height(Spacing.sm))
+        FlowSecondaryButton(
+            text = if (status.isSyncing) "Downloading…" else "Download for Offline Use",
+            onClick = onSync,
+            enabled = !status.isSyncing,
+            loading = status.isSyncing,
+            leadingIcon = { Icon(Icons.Filled.CloudDownload, contentDescription = null) },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 

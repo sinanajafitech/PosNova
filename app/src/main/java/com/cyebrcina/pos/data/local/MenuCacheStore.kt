@@ -12,7 +12,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -33,22 +32,29 @@ class MenuCacheStore @Inject constructor(
 ) {
     private object Keys {
         val MENU_JSON = stringPreferencesKey("menu_json")
+        val CACHED_AT = stringPreferencesKey("cached_at")
     }
 
-    private val cachedJson = context.menuCacheDataStore.data
+    private val data = context.menuCacheDataStore.data
         .catch { e -> if (e is IOException) emit(emptyPreferences()) else throw e }
-        .map { prefs -> prefs[Keys.MENU_JSON] }
 
     /** Null if nothing has ever been cached, or the cached value doesn't parse (e.g. a shape
      * change across app versions) — either way, the caller just falls back to an empty menu
      * until the next successful network refresh, same as before this cache existed. */
     suspend fun load(): MenuResponse? {
-        val raw = cachedJson.first() ?: return null
+        val raw = data.first()[Keys.MENU_JSON] ?: return null
         return runCatching { json.decodeFromString<MenuResponse>(raw) }.getOrNull()
     }
 
+    /** ISO-8601 instant of the last successful [save] — surfaced in Settings' Offline Mode
+     * section so staff can see whether/when the menu was last made available offline. */
+    suspend fun lastCachedAt(): String? = data.first()[Keys.CACHED_AT]
+
     suspend fun save(response: MenuResponse) {
         val encoded = json.encodeToString(response)
-        context.menuCacheDataStore.edit { prefs -> prefs[Keys.MENU_JSON] = encoded }
+        context.menuCacheDataStore.edit { prefs ->
+            prefs[Keys.MENU_JSON] = encoded
+            prefs[Keys.CACHED_AT] = java.time.Instant.now().toString()
+        }
     }
 }
