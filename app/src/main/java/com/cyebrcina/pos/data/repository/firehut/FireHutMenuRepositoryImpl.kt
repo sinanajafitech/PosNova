@@ -1,5 +1,6 @@
 package com.cyebrcina.pos.data.repository.firehut
 
+import com.cyebrcina.pos.data.local.MenuCacheStore
 import com.cyebrcina.pos.data.remote.FireHutDeviceApi
 import com.cyebrcina.pos.data.remote.errorMessageOrDefault
 import com.cyebrcina.pos.data.remote.model.MenuAddOn
@@ -9,14 +10,19 @@ import com.cyebrcina.pos.data.repository.MenuRepository
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
 @Singleton
 class FireHutMenuRepositoryImpl @Inject constructor(
     private val api: FireHutDeviceApi,
     private val json: Json,
+    private val menuCacheStore: MenuCacheStore,
 ) : MenuRepository {
 
     private val _categories = MutableStateFlow<List<MenuCategory>>(emptyList())
@@ -28,6 +34,20 @@ class FireHutMenuRepositoryImpl @Inject constructor(
     private val _modifierGroups = MutableStateFlow<List<MenuModifierGroup>>(emptyList())
     override val modifierGroups: StateFlow<List<MenuModifierGroup>> = _modifierGroups
 
+    init {
+        // Seeds the in-memory StateFlows from disk immediately, before the first network
+        // refresh() even runs — a cold, offline launch (NewOrderViewModel.init calls refresh()
+        // right away) then has real items to browse instead of an empty menu, since refresh()
+        // failing no longer wipes out what was already loaded.
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            menuCacheStore.load()?.let { cached ->
+                _categories.value = cached.categories
+                _addOns.value = cached.addOns
+                _modifierGroups.value = cached.modifierGroups
+            }
+        }
+    }
+
     override suspend fun refresh(): Result<Unit> = runCatching {
         val response = api.menu()
         if (!response.isSuccessful) throw IllegalStateException(response.errorMessageOrDefault(json))
@@ -35,6 +55,7 @@ class FireHutMenuRepositoryImpl @Inject constructor(
         _categories.value = body.categories
         _addOns.value = body.addOns
         _modifierGroups.value = body.modifierGroups
+        menuCacheStore.save(body)
     }.recoverCatching { cause ->
         throw if (cause is IOException) IOException("Couldn't reach the server — check your connection", cause) else cause
     }

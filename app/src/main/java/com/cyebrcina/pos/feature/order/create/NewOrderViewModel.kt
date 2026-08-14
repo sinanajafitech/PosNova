@@ -19,6 +19,7 @@ import com.cyebrcina.pos.data.remote.model.MenuProduct
 import com.cyebrcina.pos.data.remote.model.MenuProductSize
 import com.cyebrcina.pos.data.remote.model.PaymentLinkResponse
 import com.cyebrcina.pos.data.repository.AuthRepository
+import com.cyebrcina.pos.data.repository.CreateOrderResult
 import com.cyebrcina.pos.data.repository.MenuRepository
 import com.cyebrcina.pos.data.repository.OrderRepository
 import com.cyebrcina.pos.payment.PaymentTerminalService
@@ -91,8 +92,17 @@ data class NewOrderUiState(
     // (manual)" instead of leaving staff stuck.
     val cardChargeSdkNotConfigured: Boolean = false,
     val completedOrder: DeviceOrder? = null,
+    // Set instead of [completedOrder] when the order couldn't reach the server and was queued
+    // locally (see OrderRepository.CreateOrderResult.Queued) — a distinct "OFFLINE-xxxxxx" label
+    // rather than a real order number, since none exists yet. OrderSuccessScreen branches on
+    // whichever of the two is non-null.
+    val queuedOfflineOrderNumber: String? = null,
     val printWarning: String? = null,
     val qrPayment: QrPaymentState = QrPaymentState(),
+    // See ConnectivityObserver — a fast, local "does the device have a network path" signal.
+    val isOnline: Boolean = true,
+    // How many orders are saved on-device waiting to sync — see OrderRepository.pendingOrderCount.
+    val pendingOrderCount: Int = 0,
 ) {
     val subtotal: Double get() = cart.subtotal()
     val total: Double get() = subtotal
@@ -151,6 +161,7 @@ class NewOrderViewModel @Inject constructor(
     private val cardChargeError = MutableStateFlow<String?>(null)
     private val cardChargeSdkNotConfigured = MutableStateFlow(false)
     private val completedOrder = MutableStateFlow<DeviceOrder?>(null)
+    private val queuedOfflineOrderNumber = MutableStateFlow<String?>(null)
     private val printWarning = MutableStateFlow<String?>(null)
     private val qrPayment = MutableStateFlow(QrPaymentState())
 
@@ -201,6 +212,12 @@ class NewOrderViewModel @Inject constructor(
         val printWarning: String?,
     )
 
+    private data class ConnectivityCore(
+        val queuedOfflineOrderNumber: String?,
+        val isOnline: Boolean,
+        val pendingOrderCount: Int,
+    )
+
     private data class CheckoutFlags(
         val paymentMethod: TillPaymentMethod,
         val cashTendered: String,
@@ -209,6 +226,9 @@ class NewOrderViewModel @Inject constructor(
         val completedOrder: DeviceOrder?,
         val printWarning: String?,
         val qrPayment: QrPaymentState,
+        val queuedOfflineOrderNumber: String?,
+        val isOnline: Boolean,
+        val pendingOrderCount: Int,
     )
 
     // combine()'s typed overloads max out at 5 flows, so >5-flow groups are nested.
@@ -232,8 +252,12 @@ class NewOrderViewModel @Inject constructor(
             combine(cardChargeError, completedOrder, printWarning, ::Triple),
         ) { payment, rest -> CheckoutCore(payment.first, payment.second, payment.third, rest.first, rest.second, rest.third) },
         qrPayment,
-    ) { core, qr ->
-        CheckoutFlags(core.paymentMethod, core.cashTendered, core.tipAmount, core.cardChargeError, core.completedOrder, core.printWarning, qr)
+        combine(queuedOfflineOrderNumber, orderRepository.isOnline, orderRepository.pendingOrderCount, ::ConnectivityCore),
+    ) { core, qr, connectivity ->
+        CheckoutFlags(
+            core.paymentMethod, core.cashTendered, core.tipAmount, core.cardChargeError, core.completedOrder, core.printWarning, qr,
+            connectivity.queuedOfflineOrderNumber, connectivity.isOnline, connectivity.pendingOrderCount,
+        )
     }
 
     val uiState: StateFlow<NewOrderUiState> = combine(
@@ -267,8 +291,11 @@ class NewOrderViewModel @Inject constructor(
                 terminalStatus = terminal,
                 cardChargeError = checkout.cardChargeError,
                 completedOrder = checkout.completedOrder,
+                queuedOfflineOrderNumber = checkout.queuedOfflineOrderNumber,
                 printWarning = checkout.printWarning,
                 qrPayment = checkout.qrPayment,
+                isOnline = checkout.isOnline,
+                pendingOrderCount = checkout.pendingOrderCount,
             )
         },
         cardChargeSdkNotConfigured,
@@ -483,9 +510,14 @@ class NewOrderViewModel @Inject constructor(
     }
 
     /** Real, live. Creates the order unpaid (`payment.method: "QR"`), then requests its
-     * scan-to-pay QR. */
+     * scan-to-pay QR. Refuses outright when offline — a QR order has no offline story (see
+     * OrderRepository.CreateOrderResult), so there's no point even attempting the request. */
     fun generateQrPayment() {
         val state = uiState.value
+        if (!state.isOnline) {
+            qrPayment.value = QrPaymentState(error = "QR payment isn't available offline — choose Cash or Card.")
+            return
+        }
         viewModelScope.launch {
             qrPayment.value = QrPaymentState(isGenerating = true)
 
@@ -509,7 +541,16 @@ class NewOrderViewModel @Inject constructor(
             )
 
             orderRepository.createOrder(request)
-                .onSuccess { order -> fetchPaymentLink(order) }
+                .onSuccess { result ->
+                    when (result) {
+                        is CreateOrderResult.Submitted -> fetchPaymentLink(result.order)
+                        // Never actually reached — createOrder() never queues a QR request (see
+                        // its doc comment) — but the sealed type still forces this branch to
+                        // exist, so it fails safely rather than silently doing nothing.
+                        is CreateOrderResult.Queued -> qrPayment.value =
+                            QrPaymentState(error = "Lost connection while creating the order — try again once you're back online.")
+                    }
+                }
                 .onFailure { err -> qrPayment.value = QrPaymentState(error = err.message ?: "Couldn't create the order") }
         }
     }
@@ -557,22 +598,69 @@ class NewOrderViewModel @Inject constructor(
         )
 
         orderRepository.createOrder(request)
-            .onSuccess { order ->
-                completedOrder.value = order
-                customerDisplayManager.update(
-                    CustomerDisplayState.NewOrderReceived(order.number),
-                )
+            .onSuccess { result ->
                 // Best-effort, like the receipt/ticket printing below — the drawer is wired
                 // through the Imin device's own built-in RJ11/RJ12 port (PrinterService's
-                // BuiltIn path), so a failed kick shouldn't fail an already-successful order.
+                // BuiltIn path), so a failed kick shouldn't fail an already-successful/queued
+                // order. Cash has already physically changed hands regardless of connectivity.
                 if (payment.method == "CASH") {
                     viewModelScope.launch { printerService.openCashDrawer() }
                 }
-                printReceiptAndTicket(order.id)
+                when (result) {
+                    is CreateOrderResult.Submitted -> {
+                        completedOrder.value = result.order
+                        customerDisplayManager.update(CustomerDisplayState.NewOrderReceived(result.order.number))
+                        printReceiptAndTicket(result.order.id)
+                    }
+                    is CreateOrderResult.Queued -> {
+                        val localLabel = "OFFLINE-${result.localId.takeLast(6).uppercase()}"
+                        queuedOfflineOrderNumber.value = localLabel
+                        customerDisplayManager.update(CustomerDisplayState.NewOrderReceived(localLabel))
+                        printOfflineReceiptAndTicket(localLabel, state, payment)
+                    }
+                }
             }
             .onFailure { err -> submitError.value = err.message ?: "Couldn't submit the order" }
 
         isSubmitting.value = false
+    }
+
+    /** The offline counterpart to [printReceiptAndTicket] — builds straight from the live cart
+     * instead of a server round-trip (see OfflineReceiptBuilder), since a queued order has no
+     * receiptData(orderId)/ticketData(orderId) to fetch yet. The kitchen can't wait for a
+     * connection to come back before it knows what to cook. */
+    private suspend fun printOfflineReceiptAndTicket(localOrderLabel: String, state: NewOrderUiState, payment: CreateOrderPayment) {
+        val warnings = mutableListOf<String>()
+        val prefs = orderRepository.receiptPrefs.value
+        val (receipt, ticket) = OfflineReceiptBuilder.build(
+            localOrderLabel = localOrderLabel,
+            storeName = session.value?.storeName.orEmpty(),
+            typeLabel = if (state.orderType == TillOrderType.DINE_IN) "Dine-in" else "Collection",
+            customerName = state.customerName,
+            customerPhone = state.customerPhone,
+            cart = state.cart,
+            itemsSubtotal = state.subtotal,
+            tipAmount = state.tipAmountValue,
+            paymentLabel = payment.method,
+            receiptPrefs = prefs,
+            kitchenTicketPrefs = null,
+        )
+        val paperSize = prefs?.paperSize.toPrinterPaperSize()
+        val printMode = prefs?.printMode.toPrintMode()
+        printerService.setPaperSize(paperSize)
+        printerService.setPrintMode(printMode)
+        printerService.print(receipt).onFailure { warnings += "Receipt: ${it.message}" }
+
+        when (kitchenPrinterDispatcher.printIfConfigured(ticket, paperSize, printMode)) {
+            null -> printerService.print(ticket).onFailure { warnings += "Ticket: ${it.message}" }
+            false -> warnings += "Ticket: couldn't reach the kitchen printer"
+            true -> Unit
+        }
+
+        // OrderSuccessScreen's own title/subtitle already explain the offline-queued state
+        // (see queuedOfflineOrderNumber) — this only needs to carry genuine print failures, same
+        // as printReceiptAndTicket's equivalent line.
+        printWarning.value = warnings.joinToString("; ").ifBlank { null }
     }
 
     private suspend fun printReceiptAndTicket(orderId: String) {
@@ -604,8 +692,18 @@ class NewOrderViewModel @Inject constructor(
     }
 
     fun reprintCompletedOrder() {
-        val order = completedOrder.value ?: return
-        viewModelScope.launch { printReceiptAndTicket(order.id) }
+        val order = completedOrder.value
+        if (order != null) {
+            viewModelScope.launch { printReceiptAndTicket(order.id) }
+            return
+        }
+        // A queued offline order has no server-side receiptData/ticketData to refetch — reprint
+        // straight from the still-intact cart, same as the original offline print (nothing on
+        // this screen can have changed it since submission).
+        val queuedLabel = queuedOfflineOrderNumber.value ?: return
+        val state = uiState.value
+        val payment = CreateOrderPayment(method = state.paymentMethod.name, amount = state.totalWithTip)
+        viewModelScope.launch { printOfflineReceiptAndTicket(queuedLabel, state, payment) }
     }
 
     /** Parks the current cart so staff can serve someone else, then clears the draft for reuse. */
@@ -653,6 +751,7 @@ class NewOrderViewModel @Inject constructor(
         tipAmount.value = ""
         cardChargeError.value = null
         completedOrder.value = null
+        queuedOfflineOrderNumber.value = null
         printWarning.value = null
         submitError.value = null
         qrPayment.value = QrPaymentState()

@@ -72,20 +72,29 @@ fun NewOrderScreen(
     Scaffold(topBar = { PosTopBar(title = "New Order") }) { padding ->
         Row(Modifier.fillMaxSize().padding(padding)) {
             Column(Modifier.weight(1f).fillMaxHeight()) {
-                when {
-                    state.isLoadingMenu -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PosColors.Blue500) }
-                    state.menuError != null -> EmptyState(
-                        icon = Icons.Filled.ShoppingBag,
-                        title = "Couldn't load the menu",
-                        description = state.menuError.orEmpty(),
-                    )
-                    // Step 1: pick a category from the grid. Step 2 (below): browse its items.
-                    state.selectedCategoryId == null -> CategoryGrid(state, viewModel)
-                    else -> {
-                        val selectedCategory = state.categories.firstOrNull { it.id == state.selectedCategoryId }
-                        CategoryHeader(category = selectedCategory, onBack = { viewModel.onCategorySelected(null) })
-                        Spacer(Modifier.height(Spacing.xs))
-                        ProductGrid(state, viewModel)
+                if (!state.isOnline) {
+                    OfflineBanner(pendingOrderCount = state.pendingOrderCount, modifier = Modifier.padding(Spacing.sm))
+                }
+                Box(Modifier.weight(1f)) {
+                    when {
+                        state.isLoadingMenu -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PosColors.Blue500) }
+                        // Only a full-screen blocker when there's truly nothing to show — a
+                        // refresh failure with a cached/previously-loaded menu still on hand (see
+                        // MenuCacheStore) falls through to browsing it instead, with the offline
+                        // banner above as the only sign anything's wrong.
+                        state.menuError != null && state.categories.isEmpty() -> EmptyState(
+                            icon = Icons.Filled.ShoppingBag,
+                            title = "Couldn't load the menu",
+                            description = state.menuError.orEmpty(),
+                        )
+                        // Step 1: pick a category from the grid. Step 2 (below): browse its items.
+                        state.selectedCategoryId == null -> CategoryGrid(state, viewModel)
+                        else -> Column {
+                            val selectedCategory = state.categories.firstOrNull { it.id == state.selectedCategoryId }
+                            CategoryHeader(category = selectedCategory, onBack = { viewModel.onCategorySelected(null) })
+                            Spacer(Modifier.height(Spacing.xs))
+                            ProductGrid(state, viewModel)
+                        }
                     }
                 }
             }

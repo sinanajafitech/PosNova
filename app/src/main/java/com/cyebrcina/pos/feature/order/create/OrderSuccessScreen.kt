@@ -41,6 +41,7 @@ fun OrderSuccessScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val order = state.completedOrder
+    val queuedNumber = state.queuedOfflineOrderNumber
 
     Box(Modifier.fillMaxSize().background(PosColors.Surface), contentAlignment = Alignment.Center) {
         Column(
@@ -51,14 +52,22 @@ fun OrderSuccessScreen(
                 .padding(Spacing.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(Modifier.height(100.dp).width(100.dp).clip(CircleShape).background(PosColors.SuccessAccent), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.height(100.dp).width(100.dp).clip(CircleShape)
+                    .background(if (queuedNumber != null) PosColors.Warning500 else PosColors.SuccessAccent),
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(Icons.Filled.Check, contentDescription = null, tint = PosColors.White, modifier = Modifier.height(42.dp))
             }
             Spacer(Modifier.height(Spacing.md))
-            Text("Order Successful", style = PosTextStyles.h3, color = PosColors.Neutral13)
+            Text(if (queuedNumber != null) "Order Saved — Offline" else "Order Successful", style = PosTextStyles.h3, color = PosColors.Neutral13)
             Spacer(Modifier.height(Spacing.xs))
             Text(
-                text = "Order #${order?.number ?: "—"} will be processed in the kitchen, wait for the order ready to serve, thank you :)",
+                text = if (queuedNumber != null) {
+                    "Order #$queuedNumber has been sent to the kitchen and saved on this till — it'll be submitted automatically once you're back online."
+                } else {
+                    "Order #${order?.number ?: "—"} will be processed in the kitchen, wait for the order ready to serve, thank you :)"
+                },
                 style = PosTextStyles.bodyMediumMedium,
                 color = PosColors.TextSecondary,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -70,7 +79,7 @@ fun OrderSuccessScreen(
             ) {
                 SuccessRow("Payment Method", state.paymentMethod.name.lowercase().replaceFirstChar { it.uppercase() })
                 Spacer(Modifier.height(Spacing.xs))
-                SuccessRow("Payment Time", order?.createdAt?.toInstantOrNull()?.asDateTime() ?: "—")
+                SuccessRow("Payment Time", order?.createdAt?.toInstantOrNull()?.asDateTime() ?: if (queuedNumber != null) "Just now" else "—")
                 Spacer(Modifier.height(Spacing.xs))
                 HorizontalDivider(color = PosColors.Border)
                 Spacer(Modifier.height(Spacing.xs))

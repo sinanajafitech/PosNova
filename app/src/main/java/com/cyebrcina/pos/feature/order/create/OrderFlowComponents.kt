@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -231,5 +232,33 @@ fun <T> SegmentedTabBar(
                 )
             }
         }
+    }
+}
+
+/** Shown at the top of the New Order / Payment screens whenever the till has no connection —
+ * see ConnectivityObserver/OrderRepository.isOnline. Orders can still be taken (see
+ * OrderRepository.CreateOrderResult.Queued); this just tells staff why, and how many are
+ * waiting to sync. */
+@Composable
+fun OfflineBanner(pendingOrderCount: Int, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(PosColors.Warning50)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xxs),
+    ) {
+        Icon(Icons.Filled.CloudOff, contentDescription = null, tint = PosColors.Warning500, modifier = Modifier.size(18.dp))
+        Text(
+            if (pendingOrderCount > 0) {
+                "Offline — $pendingOrderCount order${if (pendingOrderCount == 1) "" else "s"} waiting to sync"
+            } else {
+                "Offline — orders will be saved and synced automatically"
+            },
+            style = PosTextStyles.bodySmallMedium,
+            color = PosColors.Warning500,
+        )
     }
 }

@@ -55,12 +55,16 @@ fun CheckoutScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(state.completedOrder) {
-        if (state.completedOrder != null) onOrderComplete()
+    LaunchedEffect(state.completedOrder, state.queuedOfflineOrderNumber) {
+        if (state.completedOrder != null || state.queuedOfflineOrderNumber != null) onOrderComplete()
     }
 
     Scaffold(topBar = { PosTopBar(title = "Payment Order", onBack = onBack, navIcon = Icons.AutoMirrored.Filled.ArrowBack) }) { padding ->
-        Row(Modifier.fillMaxSize().padding(padding).padding(Spacing.lg)) {
+      Column(Modifier.fillMaxSize().padding(padding)) {
+        if (!state.isOnline) {
+            OfflineBanner(pendingOrderCount = state.pendingOrderCount, modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm))
+        }
+        Row(Modifier.fillMaxSize().padding(Spacing.lg)) {
             Column(
                 modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(20.dp)).background(PosColors.Surface).padding(Spacing.sm),
             ) {
@@ -107,9 +111,15 @@ fun CheckoutScreen(
                 Text("Payment Method", style = PosTextStyles.bodySmallSemibold, color = PosColors.Neutral13)
                 Spacer(Modifier.height(Spacing.xs))
                 SegmentedTabBar(
-                    options = listOf(TillPaymentMethod.CASH to "Cash", TillPaymentMethod.CARD to "Card", TillPaymentMethod.QR to "QR"),
+                    options = listOf(
+                        TillPaymentMethod.CASH to "Cash",
+                        TillPaymentMethod.CARD to "Card",
+                        TillPaymentMethod.QR to if (state.isOnline) "QR" else "QR (offline)",
+                    ),
                     selected = state.paymentMethod,
-                    onSelected = viewModel::onPaymentMethodChanged,
+                    // QR has no offline story — see OrderRepository.CreateOrderResult — so
+                    // there's no point letting staff even select it while disconnected.
+                    onSelected = { method -> if (method != TillPaymentMethod.QR || state.isOnline) viewModel.onPaymentMethodChanged(method) },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(Spacing.lg))
@@ -133,6 +143,7 @@ fun CheckoutScreen(
                 }
             }
         }
+      }
     }
 }
 
@@ -256,6 +267,12 @@ private fun QrPaymentSection(state: NewOrderUiState, viewModel: NewOrderViewMode
         contentAlignment = Alignment.Center,
     ) {
         when {
+            !state.isOnline -> Text(
+                "QR payment needs a connection — choose Cash or Card instead.",
+                style = PosTextStyles.bodySmallMedium,
+                color = PosColors.Warning500,
+                modifier = Modifier.padding(Spacing.sm),
+            )
             qr.link != null -> {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     coil.compose.AsyncImage(
@@ -277,6 +294,7 @@ private fun QrPaymentSection(state: NewOrderUiState, viewModel: NewOrderViewMode
     }
     Spacer(Modifier.height(Spacing.lg))
     when {
+        !state.isOnline -> Unit
         qr.link != null -> FlowSecondaryButton(text = "Cancel", onClick = viewModel::cancelQrPayment, modifier = Modifier.fillMaxWidth())
         qr.error != null -> FlowPrimaryButton(
             text = "Retry",
