@@ -13,6 +13,8 @@ import javax.inject.Singleton
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 private val Context.menuCacheDataStore by preferencesDataStore(name = "menu_cache")
