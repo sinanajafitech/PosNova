@@ -43,6 +43,7 @@ import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
 import com.cyebrcina.pos.data.remote.model.DeviceStaffMember
 import com.cyebrcina.pos.feature.order.create.FlowPrimaryButton
+import com.cyebrcina.pos.feature.order.create.OfflineBanner
 
 private const val PIN_DOTS_LENGTH = 8
 
@@ -58,7 +59,11 @@ fun SelectStaffScreen(onStaffConfirmed: () -> Unit, viewModel: SelectStaffViewMo
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { PosTopBar(title = "Select Staff") }) { padding ->
-        Row(Modifier.fillMaxSize().padding(padding)) {
+      Column(Modifier.fillMaxSize().padding(padding)) {
+        if (!state.isOnline) {
+            OfflineBanner(pendingOrderCount = 0, modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm))
+        }
+        Row(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 when {
                     state.isLoadingStaff -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -111,26 +116,32 @@ fun SelectStaffScreen(onStaffConfirmed: () -> Unit, viewModel: SelectStaffViewMo
                 )
                 Spacer(Modifier.height(Spacing.xxs))
                 Text(
-                    "Enter your PIN",
+                    if (state.isOnline) "Enter your PIN" else "No connection — tap Confirm to continue",
                     style = PosTextStyles.bodyMediumRegular,
                     color = PosColors.TextSecondary,
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(Spacing.lg))
 
-                PinDots(length = PIN_DOTS_LENGTH, filled = state.pin.length)
-                Spacer(Modifier.height(Spacing.sm))
-                state.pinError?.let {
-                    Text(it, style = PosTextStyles.bodySmallSemibold, color = PosColors.Danger, textAlign = TextAlign.Center)
+                // PIN verification needs a live call to the server (the PIN hash never leaves
+                // it) — with no connection there's nothing to check it against, so the whole
+                // step is skipped rather than shown but non-functional. See
+                // SelectStaffViewModel's class doc for why that's an acceptable tradeoff here.
+                if (state.isOnline) {
+                    PinDots(length = PIN_DOTS_LENGTH, filled = state.pin.length)
                     Spacer(Modifier.height(Spacing.sm))
-                }
+                    state.pinError?.let {
+                        Text(it, style = PosTextStyles.bodySmallSemibold, color = PosColors.Danger, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(Spacing.sm))
+                    }
 
-                Spacer(Modifier.height(Spacing.lg))
-                NumericKeypad(
-                    onDigit = viewModel::onDigit,
-                    onBackspace = viewModel::onBackspace,
-                    modifier = Modifier.width(280.dp),
-                )
+                    Spacer(Modifier.height(Spacing.lg))
+                    NumericKeypad(
+                        onDigit = viewModel::onDigit,
+                        onBackspace = viewModel::onBackspace,
+                        modifier = Modifier.width(280.dp),
+                    )
+                }
 
                 Spacer(Modifier.height(Spacing.lg))
                 FlowPrimaryButton(
@@ -142,6 +153,7 @@ fun SelectStaffScreen(onStaffConfirmed: () -> Unit, viewModel: SelectStaffViewMo
                 )
             }
         }
+      }
     }
 }
 
