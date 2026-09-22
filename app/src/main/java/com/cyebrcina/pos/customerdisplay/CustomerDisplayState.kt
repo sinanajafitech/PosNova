@@ -22,4 +22,11 @@ sealed interface CustomerDisplayState {
     ) : CustomerDisplayState
 }
 
-data class CustomerDisplayLineItem(val name: String, val quantity: Int, val lineTotal: Double)
+data class CustomerDisplayLineItem(
+    val name: String,
+    val quantity: Int,
+    val lineTotal: Double,
+    /** e.g. "Large · Extra cheese" — size/add-ons joined for display, or null if the line has none. */
+    val options: String? = null,
+    val note: String? = null,
+)

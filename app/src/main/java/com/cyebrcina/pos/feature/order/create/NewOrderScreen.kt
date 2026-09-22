@@ -400,6 +400,22 @@ private fun CartLineRow(item: CartItem, onIncrement: () -> Unit, onDecrement: ()
                 val extras = listOfNotNull(item.size?.label) + item.addOns.map { it.name }
                 Text(extras.joinToString(", "), style = PosTextStyles.bodyXSmallRegular, color = PosColors.TextSecondary, maxLines = 1)
             }
+            item.notes?.trim()?.takeIf { it.isNotEmpty() }?.let { note ->
+                Spacer(Modifier.height(Spacing.xxxs))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(PosColors.Pending50)
+                        .border(1.dp, PosColors.Pending200, RoundedCornerShape(8.dp))
+                        .padding(horizontal = Spacing.xxs, vertical = Spacing.xxxs),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.xxxs),
+                ) {
+                    Text("NOTE", style = PosTextStyles.bodyXSmallSemibold, color = PosColors.Pending500)
+                    Text(note, style = PosTextStyles.bodyXSmallRegular, color = PosColors.Neutral12)
+                }
+            }
             Text(item.lineTotal.asCurrency(), style = PosTextStyles.bodyXSmallSemibold, color = PosColors.Blue500)
         }
         QuantityStepper(quantity = item.quantity, onIncrement = onIncrement, onDecrement = onDecrement)

@@ -12,12 +12,16 @@ import com.cyebrcina.pos.data.remote.model.CreateOrderPayment
 import com.cyebrcina.pos.data.remote.model.CreateOrderRequest
 import com.cyebrcina.pos.data.remote.model.DeviceOrder
 import com.cyebrcina.pos.data.remote.model.DeviceOrderType
+import com.cyebrcina.pos.data.remote.model.KitchenTicketData
+import com.cyebrcina.pos.data.remote.model.KitchenTicketItem
 import com.cyebrcina.pos.data.remote.model.MenuAddOn
 import com.cyebrcina.pos.data.remote.model.MenuCategory
 import com.cyebrcina.pos.data.remote.model.MenuModifierGroup
 import com.cyebrcina.pos.data.remote.model.MenuProduct
 import com.cyebrcina.pos.data.remote.model.MenuProductSize
 import com.cyebrcina.pos.data.remote.model.PaymentLinkResponse
+import com.cyebrcina.pos.data.remote.model.ReceiptData
+import com.cyebrcina.pos.data.remote.model.ReceiptItem
 import com.cyebrcina.pos.data.repository.AuthRepository
 import com.cyebrcina.pos.data.repository.CreateOrderResult
 import com.cyebrcina.pos.data.repository.MenuRepository
@@ -121,7 +125,7 @@ data class NewOrderUiState(
         get() = cart.isNotEmpty() && (orderType == TillOrderType.COLLECTION || !tableLabel.isNullOrBlank())
     val cashTenderedAmount: Double get() = cashTendered.toDoubleOrNull() ?: 0.0
     val change: Double get() = (cashTenderedAmount - totalWithTip).coerceAtLeast(0.0)
-    val canConfirmCashPayment: Boolean get() = cashTenderedAmount >= totalWithTip
+    val canConfirmCashPayment: Boolean get() = cashTenderedAmount.roundToCents() >= totalWithTip.roundToCents()
 }
 
 @HiltViewModel
@@ -320,7 +324,19 @@ class NewOrderViewModel @Inject constructor(
                 if (started) {
                     customerDisplayManager.update(
                         CustomerDisplayState.BuildingOrder(
-                            items = cartItems.map { CustomerDisplayLineItem(it.product.name, it.quantity, it.lineTotal) },
+                            items = cartItems.map { item ->
+                                val options = buildList {
+                                    item.size?.label?.let(::add)
+                                    addAll(item.addOns.map { it.name })
+                                }.joinToString(" · ").ifBlank { null }
+                                CustomerDisplayLineItem(
+                                    name = item.product.name,
+                                    quantity = item.quantity,
+                                    lineTotal = item.lineTotal,
+                                    options = options,
+                                    note = item.notes?.trim()?.takeIf { it.isNotEmpty() },
+                                )
+                            },
                             total = cartItems.subtotal(),
                         ),
                     )
@@ -528,6 +544,7 @@ class NewOrderViewModel @Inject constructor(
                 customerPhone = state.customerPhone,
                 phoneCallLogId = state.phoneCallLogId,
                 staffId = currentStaffStore.currentStaff.first()?.id,
+                notes = state.cart.itemNotesSummary(),
                 items = state.cart.map { item ->
                     CreateOrderItemRequest(
                         productId = item.product.id,
@@ -573,6 +590,10 @@ class NewOrderViewModel @Inject constructor(
     }
 
     private suspend fun submitOrder(payment: CreateOrderPayment) {
+        // Guards against a double-tap firing two submissions before Compose recomposes and
+        // disables the button — viewModelScope runs on Main.immediate, so this check-then-set
+        // completes synchronously before either launch's coroutine can suspend, closing the race.
+        if (isSubmitting.value) return
         val state = uiState.value
         isSubmitting.value = true
         submitError.value = null
@@ -584,6 +605,7 @@ class NewOrderViewModel @Inject constructor(
             customerPhone = state.customerPhone,
             phoneCallLogId = state.phoneCallLogId,
             staffId = currentStaffStore.currentStaff.first()?.id,
+            notes = state.cart.itemNotesSummary(),
             items = state.cart.map { item ->
                 CreateOrderItemRequest(
                     productId = item.product.id,
@@ -610,7 +632,7 @@ class NewOrderViewModel @Inject constructor(
                     is CreateOrderResult.Submitted -> {
                         completedOrder.value = result.order
                         customerDisplayManager.update(CustomerDisplayState.NewOrderReceived(result.order.number))
-                        printReceiptAndTicket(result.order.id)
+                        printReceiptAndTicket(result.order.id, state.cart)
                     }
                     is CreateOrderResult.Queued -> {
                         val localLabel = "OFFLINE-${result.localId.takeLast(6).uppercase()}"
@@ -663,20 +685,22 @@ class NewOrderViewModel @Inject constructor(
         printWarning.value = warnings.joinToString("; ").ifBlank { null }
     }
 
-    private suspend fun printReceiptAndTicket(orderId: String) {
+    private suspend fun printReceiptAndTicket(orderId: String, cartSnapshot: List<CartItem>? = null) {
         val warnings = mutableListOf<String>()
         orderRepository.receiptData(orderId)
             .onSuccess { data ->
                 printerService.setPaperSize(data.prefs?.paperSize.toPrinterPaperSize())
                 printerService.setPrintMode(data.prefs?.printMode.toPrintMode())
-                printerService.print(ReceiptBuilder.buildCustomerReceipt(data)).onFailure { warnings += "Receipt: ${it.message}" }
+                val receiptData = cartSnapshot?.let(data::withCartItemNotes) ?: data
+                printerService.print(ReceiptBuilder.buildCustomerReceipt(receiptData)).onFailure { warnings += "Receipt: ${it.message}" }
             }
             .onFailure { warnings += "Couldn't fetch receipt data: ${it.message}" }
         orderRepository.ticketData(orderId)
             .onSuccess { data ->
                 val paperSize = data.prefs?.paperSize.toPrinterPaperSize()
                 val printMode = data.prefs?.printMode.toPrintMode()
-                val ticket = ReceiptBuilder.buildKitchenTicket(data)
+                val ticketData = cartSnapshot?.let(data::withCartItemNotes) ?: data
+                val ticket = ReceiptBuilder.buildKitchenTicket(ticketData)
                 when (kitchenPrinterDispatcher.printIfConfigured(ticket, paperSize, printMode)) {
                     null -> {
                         printerService.setPaperSize(paperSize)
@@ -693,15 +717,15 @@ class NewOrderViewModel @Inject constructor(
 
     fun reprintCompletedOrder() {
         val order = completedOrder.value
+        val state = uiState.value
         if (order != null) {
-            viewModelScope.launch { printReceiptAndTicket(order.id) }
+            viewModelScope.launch { printReceiptAndTicket(order.id, state.cart) }
             return
         }
         // A queued offline order has no server-side receiptData/ticketData to refetch — reprint
         // straight from the still-intact cart, same as the original offline print (nothing on
         // this screen can have changed it since submission).
         val queuedLabel = queuedOfflineOrderNumber.value ?: return
-        val state = uiState.value
         val payment = CreateOrderPayment(method = state.paymentMethod.name, amount = state.totalWithTip)
         viewModelScope.launch { printOfflineReceiptAndTicket(queuedLabel, state, payment) }
     }
@@ -769,3 +793,36 @@ class NewOrderViewModel @Inject constructor(
         PaymentProvider.TEYA -> "TEYA"
     }
 }
+
+private fun List<CartItem>.itemNotesSummary(): String? =
+    mapNotNull { item ->
+        val note = item.notes?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        "${item.quantity}x ${item.product.name}: $note"
+    }.joinToString("; ").ifBlank { null }
+
+/**
+ * Server receipt/ticket items carry no stable line id back to the submitted cart, so notes can
+ * only be matched to cart lines by position — and that's only safe when the counts match. If the
+ * server groups or reorders items differently than submitted (not verified against the real
+ * backend either way), matching by index could attach a note (e.g. an allergy note) to the wrong
+ * item, so this bails out and leaves the server's own notes untouched rather than guess.
+ */
+private fun <T> mergeCartNotes(
+    items: List<T>,
+    cart: List<CartItem>,
+    existingNotes: (T) -> String?,
+    withNotes: (T, String?) -> T,
+): List<T> {
+    if (items.size != cart.size) return items
+    return items.mapIndexed { index, item ->
+        val resolvedNotes = existingNotes(item)?.takeIf { it.isNotBlank() }
+            ?: cart[index].notes?.trim()?.takeIf { it.isNotEmpty() }
+        withNotes(item, resolvedNotes)
+    }
+}
+
+private fun ReceiptData.withCartItemNotes(cart: List<CartItem>): ReceiptData =
+    copy(items = mergeCartNotes(items, cart, ReceiptItem::notes) { item, notes -> item.copy(notes = notes) })
+
+private fun KitchenTicketData.withCartItemNotes(cart: List<CartItem>): KitchenTicketData =
+    copy(items = mergeCartNotes(items, cart, KitchenTicketItem::notes) { item, notes -> item.copy(notes = notes) })
