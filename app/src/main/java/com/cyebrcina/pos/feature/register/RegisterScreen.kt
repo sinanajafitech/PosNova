@@ -14,14 +14,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LocalAtm
+import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +41,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cyebrcina.pos.core.components.AppTextField
@@ -46,6 +53,7 @@ import com.cyebrcina.pos.core.util.asCurrency
 import com.cyebrcina.pos.core.util.asDateTime
 import com.cyebrcina.pos.core.util.toInstantOrNull
 import com.cyebrcina.pos.data.remote.model.CashRegisterSessionDto
+import com.cyebrcina.pos.data.remote.model.ZReport
 import com.cyebrcina.pos.feature.order.create.FlowPrimaryButton
 import kotlin.math.abs
 
@@ -74,9 +82,27 @@ fun RegisterScreen(viewModel: RegisterViewModel = hiltViewModel()) {
 
                 when {
                     state.justClosed != null -> ClosedCard(state.justClosed!!, onDismiss = viewModel::dismissClosedSummary)
-                    state.session != null -> OpenCard(state.session!!, state.isSubmitting, onClose = viewModel::closeRegister)
+                    state.session != null -> OpenCard(
+                        session = state.session!!,
+                        isSubmitting = state.isSubmitting,
+                        onClose = viewModel::closeRegister,
+                        onViewXReport = viewModel::viewXReport,
+                    )
                     !state.isLoading -> StartCard(state.isSubmitting, onOpen = viewModel::openRegister)
                 }
+            }
+        }
+
+        if (state.isLoadingXReport || state.xReport != null || state.xReportError != null) {
+            Dialog(onDismissRequest = viewModel::dismissXReport) {
+                XReportCard(
+                    report = state.xReport,
+                    isLoading = state.isLoadingXReport,
+                    error = state.xReportError,
+                    printWarning = state.xReportPrintWarning,
+                    onPrint = viewModel::printXReport,
+                    onDismiss = viewModel::dismissXReport,
+                )
             }
         }
     }
@@ -124,7 +150,12 @@ private fun StartCard(isSubmitting: Boolean, onOpen: (Double) -> Unit) {
 }
 
 @Composable
-private fun OpenCard(session: CashRegisterSessionDto, isSubmitting: Boolean, onClose: (Double) -> Unit) {
+private fun OpenCard(
+    session: CashRegisterSessionDto,
+    isSubmitting: Boolean,
+    onClose: (Double) -> Unit,
+    onViewXReport: () -> Unit,
+) {
     var countedCash by remember { mutableStateOf("") }
 
     FlowCard {
@@ -144,7 +175,16 @@ private fun OpenCard(session: CashRegisterSessionDto, isSubmitting: Boolean, onC
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(PosColors.Surface).padding(Spacing.sm)) {
             SummaryRow("Opening Float", session.openingFloat.asCurrency())
         }
-        Spacer(Modifier.height(Spacing.lg))
+        Spacer(Modifier.height(Spacing.sm))
+
+        // Mid-shift checkpoint — cash/card totals so far, without closing anything. Distinct from
+        // Close Register below, which is a real, destructive-to-the-open-session action.
+        TextButton(onClick = onViewXReport) {
+            Icon(Icons.Filled.QueryStats, contentDescription = null, tint = PosColors.Blue500, modifier = Modifier.height(18.dp))
+            Spacer(Modifier.width(Spacing.xxs))
+            Text("View X-Report (cash + card so far)", style = PosTextStyles.bodySmallSemibold, color = PosColors.Blue500)
+        }
+        Spacer(Modifier.height(Spacing.md))
 
         AppTextField(
             value = countedCash,
@@ -225,6 +265,73 @@ private fun FlowCard(content: @Composable ColumnScope.() -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         content = content,
     )
+}
+
+/** Read-only mid-shift checkpoint — today's running totals for this till, including the
+ * cash/card split, without closing or resetting the open register session. */
+@Composable
+private fun XReportCard(
+    report: ZReport?,
+    isLoading: Boolean,
+    error: String?,
+    printWarning: String?,
+    onPrint: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    FlowCard {
+        IconBadge(Icons.Filled.QueryStats, PosColors.Blue500)
+        Spacer(Modifier.height(Spacing.md))
+        Text("X-Report", style = PosTextStyles.h3, color = PosColors.Neutral13)
+        Spacer(Modifier.height(Spacing.xs))
+        Text(
+            "Checkpoint only — doesn't close or reset anything.",
+            style = PosTextStyles.bodyMediumMedium,
+            color = PosColors.TextSecondary,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(Spacing.lg))
+
+        when {
+            isLoading -> CircularProgressIndicator(color = PosColors.Blue500)
+            error != null -> Text(error, style = PosTextStyles.bodySmallRegular, color = PosColors.Warning500, textAlign = TextAlign.Center)
+            report != null -> Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                    .clip(RoundedCornerShape(12.dp)).background(PosColors.Surface).padding(Spacing.sm),
+            ) {
+                SummaryRow("Orders", report.orderCount.toString())
+                Spacer(Modifier.height(Spacing.xs))
+                SummaryRow("Gross sales", report.grossSales.asCurrency())
+                Spacer(Modifier.height(Spacing.xs))
+                SummaryRow("Net sales", report.netSales.asCurrency(), emphasize = true)
+                if (report.paymentBreakdown.isNotEmpty()) {
+                    Spacer(Modifier.height(Spacing.xs))
+                    HorizontalDivider(color = PosColors.Border)
+                    Spacer(Modifier.height(Spacing.xs))
+                    report.paymentBreakdown.forEach { row ->
+                        SummaryRow(row.provider, "${row.amount.asCurrency()} (${row.orders})")
+                        Spacer(Modifier.height(Spacing.xxs))
+                    }
+                }
+            }
+        }
+
+        printWarning?.let { warning ->
+            Spacer(Modifier.height(Spacing.sm))
+            Text("Couldn't print: $warning", style = PosTextStyles.bodyXSmallRegular, color = PosColors.Warning500, textAlign = TextAlign.Center)
+        }
+
+        Spacer(Modifier.height(Spacing.lg))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            if (report != null) {
+                TextButton(onClick = onPrint, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Filled.Print, contentDescription = null, tint = PosColors.Blue500, modifier = Modifier.height(18.dp))
+                    Spacer(Modifier.width(Spacing.xxs))
+                    Text("Print", style = PosTextStyles.bodySmallSemibold, color = PosColors.Blue500)
+                }
+            }
+            FlowPrimaryButton(text = "Done", onClick = onDismiss, modifier = Modifier.weight(1f))
+        }
+    }
 }
 
 @Composable

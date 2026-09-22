@@ -123,6 +123,27 @@ object ReceiptBuilder {
         add(PrintCommand.Cut)
     }
 
+    /** A read-only mid-shift checkpoint — same fields as [buildZReport] (including the cash/card
+     * [ZReport.paymentBreakdown]), but explicitly labeled so it's never mistaken for the
+     * end-of-day closing report it's pulled from the same live, non-destructive query as. */
+    fun buildXReport(report: ZReport): PrintDocument = buildList {
+        add(PrintCommand.Text(report.storeName, align = PrintAlign.CENTER, size = PrintTextSize.LARGE, bold = true))
+        add(PrintCommand.Text("X-Report — Checkpoint", align = PrintAlign.CENTER, bold = true))
+        add(PrintCommand.Text(report.date, align = PrintAlign.CENTER, size = PrintTextSize.SMALL))
+        add(PrintCommand.FeedLines())
+        add(PrintCommand.Row("Orders", report.orderCount.toString()))
+        add(PrintCommand.Row("Gross sales", report.grossSales.asCurrency()))
+        add(PrintCommand.Row("Refunds", "-${report.refundsTotal.asCurrency()} (${report.refundsCount})"))
+        add(PrintCommand.Row("Net sales", report.netSales.asCurrency(), bold = true))
+        add(PrintCommand.Row("Avg. order", report.avgOrderValue.asCurrency()))
+        add(PrintCommand.Divider)
+        report.paymentBreakdown.forEach { add(PrintCommand.Row(it.provider, "${it.amount.asCurrency()} (${it.orders})")) }
+        add(PrintCommand.Divider)
+        add(PrintCommand.Text("Read-only checkpoint — does not close or reset the day.", size = PrintTextSize.SMALL))
+        add(PrintCommand.FeedLines(2))
+        add(PrintCommand.Cut)
+    }
+
     fun buildTestPrint(storeName: String): PrintDocument = listOf(
         PrintCommand.Text(storeName, align = PrintAlign.CENTER, size = PrintTextSize.LARGE, bold = true),
         PrintCommand.Text("Printer test", align = PrintAlign.CENTER),

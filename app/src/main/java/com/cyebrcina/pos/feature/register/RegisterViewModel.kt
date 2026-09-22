@@ -4,7 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cyebrcina.pos.data.local.CurrentStaffStore
 import com.cyebrcina.pos.data.remote.model.CashRegisterSessionDto
+import com.cyebrcina.pos.data.remote.model.ZReport
 import com.cyebrcina.pos.data.repository.CashRegisterRepository
+import com.cyebrcina.pos.data.repository.ReportChannel
+import com.cyebrcina.pos.data.repository.ReportRepository
+import com.cyebrcina.pos.printer.PrinterService
+import com.cyebrcina.pos.printer.ReceiptBuilder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,12 +27,20 @@ data class RegisterUiState(
     // The just-closed session's reconciliation summary, shown once until dismissed —
     // kept separate from `session` since closing clears the till's own open session.
     val justClosed: CashRegisterSessionDto? = null,
+    // A read-only mid-shift checkpoint (today's running totals, incl. cash/card split) — unlike
+    // Register Close, pulling this up never touches CashRegisterSession or resets anything.
+    val xReport: ZReport? = null,
+    val isLoadingXReport: Boolean = false,
+    val xReportError: String? = null,
+    val xReportPrintWarning: String? = null,
 )
 
 @HiltViewModel
 class RegisterViewModel @Inject constructor(
     private val registerRepository: CashRegisterRepository,
     private val currentStaffStore: CurrentStaffStore,
+    private val reportRepository: ReportRepository,
+    private val printerService: PrinterService,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RegisterUiState())
@@ -68,5 +81,29 @@ class RegisterViewModel @Inject constructor(
 
     fun dismissClosedSummary() {
         _uiState.update { it.copy(justClosed = null) }
+    }
+
+    /** Today's running totals (gross/net/cash/card so far), non-destructive — same underlying
+     * query as the end-of-day Report tab's Z-Report, just for "right now" rather than a closed
+     * day, and surfaced here since Cash Register is where staff already think in shift terms. */
+    fun viewXReport() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingXReport = true, xReportError = null, xReportPrintWarning = null) }
+            reportRepository.getZReport(date = null, channel = ReportChannel.TILL)
+                .onSuccess { report -> _uiState.update { it.copy(xReport = report, isLoadingXReport = false) } }
+                .onFailure { err -> _uiState.update { it.copy(isLoadingXReport = false, xReportError = err.message) } }
+        }
+    }
+
+    fun dismissXReport() {
+        _uiState.update { it.copy(xReport = null, xReportError = null, xReportPrintWarning = null) }
+    }
+
+    fun printXReport() {
+        val report = _uiState.value.xReport ?: return
+        viewModelScope.launch {
+            printerService.print(ReceiptBuilder.buildXReport(report))
+                .onFailure { err -> _uiState.update { it.copy(xReportPrintWarning = err.message) } }
+        }
     }
 }
