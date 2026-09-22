@@ -1,5 +1,6 @@
 package com.cyebrcina.pos.data.repository.firehut
 
+import android.util.Log
 import com.cyebrcina.pos.data.local.ConnectivityObserver
 import com.cyebrcina.pos.data.local.DeviceSessionStore
 import com.cyebrcina.pos.data.local.PendingOrderStore
@@ -43,6 +44,7 @@ import kotlinx.serialization.json.Json
 
 private const val POLL_INTERVAL_MS = 15_000L
 private const val MAX_FLUSH_ATTEMPTS = 10
+private const val TAG = "FireHutOrderRepository"
 
 @Singleton
 class FireHutOrderRepositoryImpl @Inject constructor(
@@ -95,7 +97,16 @@ class FireHutOrderRepositoryImpl @Inject constructor(
         if (pollJob?.isActive == true) return
         pollJob = scope.launch {
             while (true) {
-                refreshPending()
+                // refreshPending()'s own runCatching only covers its own fetch — flushPendingOrders()
+                // (called unconditionally after) and anything else in the cycle is NOT covered. Since
+                // this coroutine is the only thing driving polling and nothing else ever calls
+                // startPolling() again after the app's first launch, one uncaught exception here used
+                // to kill this loop silently and permanently — the till would freeze on stale pending
+                // orders indefinitely, with no error shown to staff, until the app was restarted. This
+                // outer catch-all guarantees a single bad cycle can never do that; it just retries next
+                // cycle instead.
+                runCatching { refreshPending() }
+                    .onFailure { Log.e(TAG, "Poll cycle failed — will retry in ${POLL_INTERVAL_MS}ms", it) }
                 delay(POLL_INTERVAL_MS)
             }
         }
