@@ -3,6 +3,7 @@ package com.cyebrcina.pos.printer.imin
 import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Log
+import com.cyebrcina.pos.BuildConfig
 import com.cyebrcina.pos.printer.model.PrintAlign
 import com.cyebrcina.pos.printer.model.PrintCommand
 import com.cyebrcina.pos.printer.model.PrintDocument
@@ -36,13 +37,13 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  *  - `getPrinterStatus()`'s return value has no status-code enum anywhere in the library, so it
  *    isn't used here at all — connection state is tracked from `InitPrinterCallback` only
  *    (bound/not bound), not fine-grained states like paper-out.
- *  - **`PRINTER_SERVICE_PACKAGE`'s value comes from library V2.0.0.19's own hardcoded
- *    `NeoPrinterManager.bindService()` source — not confirmed against this specific unit's
- *    actual firmware.** On real hardware where the bind still fails after the `<queries>` fix
- *    in AndroidManifest.xml, `connect()` below now checks the package directly via
- *    PackageManager and reports whether it's genuinely absent vs present-but-refusing, since
- *    those need different fixes (wrong package name for this device/firmware generation, vs. a
- *    permission/signature mismatch) and guessing which one blind wastes a fix cycle each time.
+ *  - `initPrinterService(context, callback)` takes no package argument — the actual bind target
+ *    is hardcoded inside the third-party SDK (`NeoPrinterManager.bindService()` in
+ *    IminPrinterLibrary V2.0.0.19), not chosen by anything below. `POSSIBLE_PACKAGES` /
+ *    `findInstalledPrinterPackage()` exist purely to make failure messages honest about what's
+ *    actually on the device (several firmware generations ship the printer service under
+ *    different package names) — finding a package here does NOT change which one the SDK binds
+ *    to, so don't read a "Found" state as "this is now working."
  */
 @Singleton
 class IminBuiltInPrinter @Inject constructor(
@@ -51,7 +52,13 @@ class IminBuiltInPrinter @Inject constructor(
     private val TAG = "IminBuiltInPrinter"
 
     companion object {
-        private const val PRINTER_SERVICE_PACKAGE = "com.imin.printerservice"
+        private val POSSIBLE_PACKAGES = listOf(
+            "com.imin.printerservice",
+            "com.imin.printer.service",
+            "com.imin.print",
+            "com.imin.library",
+            "com.imin.printer.service.v2",
+        )
     }
 
     @Volatile
@@ -66,38 +73,59 @@ class IminBuiltInPrinter @Inject constructor(
 
     /** What a failed bind actually means — these need different fixes, and blindly reporting
      * "not installed" (the old message) was a guess I had no way to back up. This checks the
-     * package directly via PackageManager so the failure message tells the truth instead. */
+     * candidate packages directly via PackageManager so the failure message tells the truth. */
     private sealed class PrinterServicePackageState {
-        data class Found(val versionName: String?) : PrinterServicePackageState()
+        data class Found(val packageName: String, val versionName: String?) : PrinterServicePackageState()
         data object NotFound : PrinterServicePackageState()
         data class CheckFailed(val reason: String) : PrinterServicePackageState()
     }
 
-    private fun checkPrinterServicePackage(): PrinterServicePackageState = try {
-        val info = context.packageManager.getPackageInfo(PRINTER_SERVICE_PACKAGE, 0)
-        PrinterServicePackageState.Found(info.versionName)
-    } catch (e: PackageManager.NameNotFoundException) {
-        PrinterServicePackageState.NotFound
-    } catch (e: Exception) {
-        // Most likely this app's own <queries> declaration is missing/wrong — without it,
-        // PackageManager can't even answer "is it installed" truthfully, let alone bind to it.
-        PrinterServicePackageState.CheckFailed(e.message ?: e.javaClass.simpleName)
+    private fun findInstalledPrinterPackage(): PrinterServicePackageState {
+        if (BuildConfig.DEBUG) logInstalledCandidatePackages()
+        for (pkg in POSSIBLE_PACKAGES) {
+            try {
+                val info = context.packageManager.getPackageInfo(pkg, 0)
+                return PrinterServicePackageState.Found(pkg, info.versionName)
+            } catch (e: PackageManager.NameNotFoundException) {
+                continue
+            } catch (e: Exception) {
+                // Most likely this app's own <queries> declaration is missing/wrong for this
+                // candidate — without it, PackageManager can't even answer "is it installed"
+                // truthfully, let alone bind to it.
+                return PrinterServicePackageState.CheckFailed(e.message ?: e.javaClass.simpleName)
+            }
+        }
+        return PrinterServicePackageState.NotFound
+    }
+
+    /** Debug-only: which of the candidate packages getPackageInfo() can actually see. Only
+     * covers packages declared in the manifest's <queries> — this app does not request
+     * QUERY_ALL_PACKAGES (Play Store restricts that permission without an approved use case). */
+    private fun logInstalledCandidatePackages() {
+        for (pkg in POSSIBLE_PACKAGES) {
+            val versionName = try {
+                context.packageManager.getPackageInfo(pkg, 0).versionName
+            } catch (e: PackageManager.NameNotFoundException) {
+                null
+            }
+            Log.i(TAG, "candidate package $pkg -> ${if (versionName != null) "installed ($versionName)" else "not visible"}")
+        }
     }
 
     suspend fun connect(): Result<Unit> = suspendCancellableCoroutine { continuation ->
-        val packageState = checkPrinterServicePackage()
-        Log.i(TAG, "connect: $PRINTER_SERVICE_PACKAGE package check -> $packageState")
+        val packageState = findInstalledPrinterPackage()
+        Log.i(TAG, "connect: candidate package check -> $packageState")
 
         val callback = object : InitPrinterCallback {
             override fun onConnected() {
                 isConnected = true
-                Log.i(TAG, "connect: bound to $PRINTER_SERVICE_PACKAGE")
+                Log.i(TAG, "connect: bound to printer service")
                 if (continuation.isActive) continuation.resume(Result.success(Unit))
             }
 
             override fun onDisconnected() {
                 isConnected = false
-                Log.w(TAG, "connect: $PRINTER_SERVICE_PACKAGE disconnected")
+                Log.w(TAG, "connect: printer service disconnected")
                 if (continuation.isActive) {
                     continuation.resume(Result.failure(IllegalStateException("Imin printer service disconnected")))
                 }
@@ -111,11 +139,11 @@ class IminBuiltInPrinter @Inject constructor(
             // without needing logcat/adb access to find out.
             val message = when (packageState) {
                 is PrinterServicePackageState.NotFound ->
-                    "$PRINTER_SERVICE_PACKAGE genuinely isn't installed on this device — this hardware may use a different printer service package than this app expects."
+                    "None of ${POSSIBLE_PACKAGES.joinToString()} are installed on this device — this hardware may use a printer service package this app doesn't know about yet."
                 is PrinterServicePackageState.Found ->
-                    "$PRINTER_SERVICE_PACKAGE is installed (version ${packageState.versionName ?: "unknown"}) but refused the connection — likely a permission or signature mismatch, not a missing app."
+                    "${packageState.packageName} is installed (version ${packageState.versionName ?: "unknown"}) but the SDK's bind still failed — likely a permission or signature mismatch, not a missing app."
                 is PrinterServicePackageState.CheckFailed ->
-                    "Couldn't even check whether $PRINTER_SERVICE_PACKAGE is installed (${packageState.reason})."
+                    "Couldn't check which printer service package is installed (${packageState.reason})."
             }
             continuation.resume(Result.failure(IllegalStateException(message)))
         }

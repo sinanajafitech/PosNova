@@ -42,6 +42,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 
 private const val POLL_INTERVAL_MS = 15_000L
+private const val MAX_FLUSH_ATTEMPTS = 10
 
 @Singleton
 class FireHutOrderRepositoryImpl @Inject constructor(
@@ -213,12 +214,26 @@ class FireHutOrderRepositoryImpl @Inject constructor(
         if (flushMutex.isLocked) return
         flushMutex.withLock {
             for (pending in pendingOrderStore.currentList()) {
+                if (pending.attempts >= MAX_FLUSH_ATTEMPTS) continue
                 val response = runCatching { api.createOrder(pending.request) }.getOrNull()
-                if (response != null && response.isSuccessful && response.body()?.order != null) {
-                    pendingOrderStore.remove(pending.localId)
-                } else {
-                    pendingOrderStore.bumpAttempts(pending.localId)
-                    break
+                when {
+                    response != null && response.isSuccessful && response.body()?.order != null ->
+                        pendingOrderStore.remove(pending.localId)
+                    response != null -> {
+                        // A real HTTP-level rejection, not a connectivity problem (e.g. a menu
+                        // item on this order was deleted server-side while it sat queued) —
+                        // retrying the identical payload won't succeed, so skip it instead of
+                        // blocking every order queued behind it. It stays in the queue, capped by
+                        // MAX_FLUSH_ATTEMPTS, so staff can still see it via the pending count.
+                        pendingOrderStore.bumpAttempts(pending.localId)
+                    }
+                    else -> {
+                        // No HTTP response at all — a genuine connectivity failure. Every order
+                        // still queued behind this one shares the same "can't reach the server"
+                        // problem, so stop here; the next successful poll or reconnect resumes.
+                        pendingOrderStore.bumpAttempts(pending.localId)
+                        break
+                    }
                 }
             }
         }

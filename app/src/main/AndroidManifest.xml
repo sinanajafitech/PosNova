@@ -1,17 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Required since Android 11 (API 30) package-visibility filtering: without this, the
-    D4's own printer/cash-drawer service (com.imin.printerservice) is invisible to this app,
-    and NeoPrinterManager.bindService() (inside com.github.iminsoftware:IminPrinterLibrary)
-    fails immediately with "Couldn't bind com.imin.printerservice — is it installed/running
-    on this device?" even though it genuinely is — package-visibility restrictions apply to
-    explicit-component bindService()/startService() calls too, not just implicit-intent
-    resolution (developer.android.com/training/package-visibility: "The limited visibility
-    also affects explicit interactions with other apps, such as starting another app's
-    service."). -->
+    <!-- Required since Android 11 (API 30) package-visibility filtering: each candidate is
+    listed explicitly so getPackageInfo()/bindService() can see it without QUERY_ALL_PACKAGES,
+    which Play Store review rejects apps for using without an approved use case. -->
     <queries>
         <package android:name="com.imin.printerservice" />
+        <package android:name="com.imin.printer.service" />
+        <package android:name="com.imin.print" />
+        <package android:name="com.imin.library" />
+        <package android:name="com.imin.printer.service.v2" />
     </queries>
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -24,7 +22,6 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
-    <!-- USB Permission (requested at runtime usually, but defined for feature) -->
     <uses-feature android:name="android.hardware.usb.host" />
 
     <application
@@ -50,7 +47,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Shares CSV transaction exports (feature/order/history) via the system share sheet. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
