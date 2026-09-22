@@ -37,22 +37,13 @@ import com.cyebrcina.pos.core.theme.Spacing
 import com.cyebrcina.pos.core.util.asCurrency
 import com.cyebrcina.pos.data.remote.model.RestaurantTableStatus
 
-private fun RestaurantTableStatus.toVisualState(): TableTileVisualState = when (this) {
-    RestaurantTableStatus.AVAILABLE -> TableTileVisualState.AVAILABLE
-    RestaurantTableStatus.RESERVED -> TableTileVisualState.RESERVED
-    RestaurantTableStatus.CLEANING -> TableTileVisualState.CLEANING
-    RestaurantTableStatus.OUT_OF_SERVICE -> TableTileVisualState.OUT_OF_SERVICE
-    RestaurantTableStatus.OCCUPIED -> TableTileVisualState.OCCUPIED
-}
-
 /**
  * Real table set synced live from Admin (`GET /api/device/tables`) — status refreshes whenever
  * any order event comes in over the socket, same as [TablesViewModel] documents. A locally held
  * new-order draft (started here, not yet sent) is a separate, till-only concept layered on top:
  * it takes visual priority over the real status since it's the more actionable thing for staff
  * ("resume this" beats "this table happens to be free/occupied right now").
- * [ChooseTableDialog] (reached mid-order) still shows the synthetic table set — see
- * `TableLayout.kt`'s own doc comment for why.
+ * [ChooseTableDialog] (reached mid-order) shows this same real, live table set.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

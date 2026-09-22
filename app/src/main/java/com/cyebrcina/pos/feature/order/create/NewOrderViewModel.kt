@@ -39,6 +39,7 @@ import com.cyebrcina.pos.printer.network.KitchenPrinterDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -483,17 +484,23 @@ class NewOrderViewModel @Inject constructor(
     fun onCashTenderedChange(value: String) = cashTendered.update { value }
     fun onTipAmountChange(value: String) = tipAmount.update { value }
 
+    private var chargeCardJob: Job? = null
+
     fun chargeCard() {
+        // Without this, a double-tap (or a tap while the Cancel button's enabled-state hasn't
+        // caught up yet) could launch two concurrent charges against the same card reader.
+        if (chargeCardJob?.isActive == true) return
         val state = uiState.value
-        viewModelScope.launch {
+        val amount = state.totalWithTip.roundToCents()
+        chargeCardJob = viewModelScope.launch {
             cardChargeError.value = null
             cardChargeSdkNotConfigured.value = false
-            paymentTerminalService.chargeCard(state.totalWithTip, "GBP", "TILL-${System.currentTimeMillis()}")
+            paymentTerminalService.chargeCard(amount, "GBP", "TILL-${System.currentTimeMillis()}")
                 .onSuccess { result ->
                     submitOrder(
                         CreateOrderPayment(
                             method = "CARD",
-                            amount = state.totalWithTip,
+                            amount = amount,
                             provider = paymentTerminalService.provider.toApiName(),
                             cardBrand = result.cardBrand,
                             cardLast4 = result.cardLast4,
@@ -514,6 +521,12 @@ class NewOrderViewModel @Inject constructor(
     }
 
     fun cancelCardCharge() {
+        // Cancelling only paymentTerminalService's own status flag (what this used to do) doesn't
+        // stop chargeCard()'s coroutine — it keeps running independently and can still resolve
+        // onSuccess afterward, silently submitting a paid order staff believed they'd aborted.
+        // Cancelling the Job itself guarantees that can't happen, on top of best-effort telling
+        // the terminal/SDK to actually stop via cancelCharge().
+        chargeCardJob?.cancel()
         viewModelScope.launch { paymentTerminalService.cancelCharge() }
     }
 
@@ -526,14 +539,20 @@ class NewOrderViewModel @Inject constructor(
         viewModelScope.launch {
             cardChargeError.value = null
             cardChargeSdkNotConfigured.value = false
-            submitOrder(CreateOrderPayment(method = "CARD", amount = state.totalWithTip))
+            submitOrder(CreateOrderPayment(method = "CARD", amount = state.totalWithTip.roundToCents()))
         }
     }
 
     fun confirmCashPayment() {
         val state = uiState.value
         viewModelScope.launch {
-            submitOrder(CreateOrderPayment(method = "CASH", amount = state.totalWithTip, cashTendered = state.cashTenderedAmount))
+            submitOrder(
+                CreateOrderPayment(
+                    method = "CASH",
+                    amount = state.totalWithTip.roundToCents(),
+                    cashTendered = state.cashTenderedAmount.roundToCents(),
+                ),
+            )
         }
     }
 
@@ -566,7 +585,7 @@ class NewOrderViewModel @Inject constructor(
                         notes = item.notes,
                     )
                 },
-                payment = CreateOrderPayment(method = "QR", amount = state.total),
+                payment = CreateOrderPayment(method = "QR", amount = state.total.roundToCents()),
                 idempotencyKey = UUID.randomUUID().toString(),
             )
 
@@ -740,7 +759,7 @@ class NewOrderViewModel @Inject constructor(
         // straight from the still-intact cart, same as the original offline print (nothing on
         // this screen can have changed it since submission).
         val queuedLabel = queuedOfflineOrderNumber.value ?: return
-        val payment = CreateOrderPayment(method = state.paymentMethod.name, amount = state.totalWithTip)
+        val payment = CreateOrderPayment(method = state.paymentMethod.name, amount = state.totalWithTip.roundToCents())
         viewModelScope.launch { printOfflineReceiptAndTicket(queuedLabel, state, payment) }
     }
 

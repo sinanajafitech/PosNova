@@ -7,6 +7,7 @@ import com.cyebrcina.pos.data.remote.model.DeviceOrder
 import com.cyebrcina.pos.data.remote.model.DeviceOrderType
 import com.cyebrcina.pos.data.remote.model.PaymentLinkResponse
 import com.cyebrcina.pos.data.repository.OrderRepository
+import com.cyebrcina.pos.feature.order.create.roundToCents
 import com.cyebrcina.pos.payment.PaymentTerminalService
 import com.cyebrcina.pos.payment.model.CardChargeResult
 import com.cyebrcina.pos.payment.model.PaymentProvider
@@ -19,6 +20,7 @@ import com.cyebrcina.pos.printer.model.toPrinterPaperSize
 import com.cyebrcina.pos.printer.network.KitchenPrinterDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -224,17 +226,29 @@ class OrderDetailViewModel @Inject constructor(
         printWarning.value = warnings.joinToString("; ").ifBlank { null }
     }
 
+    private var chargeCardJob: Job? = null
+
     fun chargeCard() {
+        // Without this, a double-tap (or a tap while the Cancel button's enabled-state hasn't
+        // caught up yet) could launch two concurrent charges against the same card reader.
+        if (chargeCardJob?.isActive == true) return
         val order = loadedOrder.value ?: return
-        viewModelScope.launch {
+        val amount = order.total.roundToCents()
+        chargeCardJob = viewModelScope.launch {
             paymentError.value = null
-            paymentTerminalService.chargeCard(order.total, "GBP", order.number)
-                .onSuccess { result -> recordCharge(order.id, order.total, result) }
+            paymentTerminalService.chargeCard(amount, "GBP", order.number)
+                .onSuccess { result -> recordCharge(order.id, amount, result) }
                 .onFailure { err -> paymentError.value = err.message ?: "Card payment failed" }
         }
     }
 
     fun cancelCharge() {
+        // Cancelling only paymentTerminalService's own status flag (what this used to do) doesn't
+        // stop chargeCard()'s coroutine — it keeps running independently and can still resolve
+        // onSuccess afterward, silently recording a charge staff believed they'd aborted.
+        // Cancelling the Job itself guarantees that can't happen, on top of best-effort telling
+        // the terminal/SDK to actually stop via cancelCharge().
+        chargeCardJob?.cancel()
         viewModelScope.launch { paymentTerminalService.cancelCharge() }
     }
 

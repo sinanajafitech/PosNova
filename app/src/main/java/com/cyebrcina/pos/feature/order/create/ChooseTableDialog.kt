@@ -26,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,13 +35,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cyebrcina.pos.core.components.AppOverlayDialog
 import com.cyebrcina.pos.core.components.AppTextField
 import com.cyebrcina.pos.core.theme.PosColors
 import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
+import com.cyebrcina.pos.data.remote.model.RestaurantTableStatus
 
-/** Matches Figma's "Choose Table" popup — table set/tile styling shared with [TablesScreen] via [TableLayout.kt]. */
+/** Matches Figma's "Choose Table" popup — real, live table set (same [TablesViewModel] data
+ * [TablesScreen] uses) via [TableLayout.kt]'s shared tile rendering. An occupied table can't be
+ * tapped — picking it again would silently start a second order against a table a real order
+ * already exists on, with nothing server-side to catch the conflict (tableLabel is just a
+ * free-text string, not a real per-table booking). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChooseTableDialog(
@@ -49,9 +57,17 @@ fun ChooseTableDialog(
     customerName: String,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
+    tablesViewModel: TablesViewModel = hiltViewModel(),
 ) {
     var pending by remember(selectedTable) { mutableStateOf(selectedTable) }
     var customEntry by remember { mutableStateOf("") }
+    val liveTables by tablesViewModel.tables.collectAsStateWithLifecycle()
+
+    // TablesViewModel otherwise only refreshes at its own creation and on socket order events —
+    // if it's an existing instance shared across an order-taking session, whatever it last held
+    // could be stale by the time staff open this dialog again. Force a fresh fetch right when
+    // it's about to matter most: the moment staff are actually picking a table.
+    LaunchedEffect(Unit) { tablesViewModel.refresh() }
 
     AppOverlayDialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(20.dp), color = PosColors.Surface) {
@@ -59,7 +75,7 @@ fun ChooseTableDialog(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column {
                         Text("Select Table", style = PosTextStyles.h4, color = PosColors.Neutral13)
-                        Text("${syntheticTables.size} tables", style = PosTextStyles.bodySmallRegular, color = PosColors.TextSecondary)
+                        Text("${liveTables.size} tables", style = PosTextStyles.bodySmallRegular, color = PosColors.TextSecondary)
                     }
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Filled.Close, contentDescription = "Close", tint = PosColors.Neutral13)
@@ -67,9 +83,13 @@ fun ChooseTableDialog(
                 }
                 Spacer(Modifier.height(Spacing.sm))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.xxxs)) {
                     LegendDot(color = PosColors.Border, label = "Available")
                     LegendDot(color = PosColors.Blue500, label = "Selected")
+                    LegendDot(color = PosColors.Danger, label = "Occupied")
+                    LegendDot(color = PosColors.Info500, label = "Reserved")
+                    LegendDot(color = PosColors.Neutral7, label = "Cleaning")
+                    LegendDot(color = PosColors.Neutral9, label = "Out of Service")
                 }
                 Spacer(Modifier.height(Spacing.sm))
                 HorizontalDivider(color = PosColors.Border)
@@ -80,11 +100,15 @@ fun ChooseTableDialog(
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     verticalArrangement = Arrangement.spacedBy(Spacing.sm),
                 ) {
-                    syntheticTables.forEach { table ->
+                    liveTables.forEach { dto ->
+                        val option = TableOption(label = dto.number, seats = dto.seats, id = dto.id)
                         TableTile(
-                            table = table,
-                            state = if (table.label == pending) TableTileVisualState.SELECTED else TableTileVisualState.AVAILABLE,
-                            onClick = { pending = table.label },
+                            table = option,
+                            state = when {
+                                dto.number == pending -> TableTileVisualState.SELECTED
+                                else -> dto.status.toVisualState()
+                            },
+                            onClick = { if (dto.status != RestaurantTableStatus.OCCUPIED) pending = dto.number },
                         )
                     }
                 }

@@ -22,21 +22,26 @@ import androidx.compose.ui.unit.dp
 import com.cyebrcina.pos.core.theme.PosColors
 import com.cyebrcina.pos.core.theme.PosTextStyles
 import com.cyebrcina.pos.core.theme.Spacing
+import com.cyebrcina.pos.data.remote.model.RestaurantTableStatus
 
-/**
- * [ChooseTableDialog] (picking a table mid-order) still uses this synthetic set — `tableLabel` on
- * a [com.cyebrcina.pos.data.remote.model.DeviceOrder] is just a free-text string with no per-table
- * identity, so there's nothing real to pick from there. [TablesScreen] (the standalone Tables tab)
- * uses real data instead — see [com.cyebrcina.pos.data.repository.TableRepository] — but shares
- * this same [TableTile] rendering.
- */
+/** Shared shape [TableTile] renders, whether fed from [TablesScreen]'s or [ChooseTableDialog]'s
+ * real, live [com.cyebrcina.pos.data.repository.TableRepository] data (both map from
+ * [com.cyebrcina.pos.data.remote.model.RestaurantTableDto]) — `tableLabel` on a
+ * [com.cyebrcina.pos.data.remote.model.DeviceOrder] is still just a free-text string, so `id` is
+ * carried through for display/selection only, not sent anywhere. */
 internal data class TableOption(val label: String, val seats: Int, val id: String? = null)
 
-internal val syntheticTables = listOf(
-    TableOption("1", 2), TableOption("2", 2), TableOption("3", 6), TableOption("4", 2),
-    TableOption("5", 2), TableOption("6", 4), TableOption("7", 4), TableOption("8", 6),
-    TableOption("9", 4), TableOption("10", 4), TableOption("11", 6), TableOption("12", 2),
-)
+/** AVAILABLE/RESERVED/CLEANING/OUT_OF_SERVICE/OCCUPIED mirror Admin's real
+ * RestaurantTableStatus (plus the derived OCCUPIED) — same color language as
+ * the dine-in floor-plan page in Admin (green/red/gray/near-black) so
+ * status means the same thing in both places. */
+internal fun RestaurantTableStatus.toVisualState(): TableTileVisualState = when (this) {
+    RestaurantTableStatus.AVAILABLE -> TableTileVisualState.AVAILABLE
+    RestaurantTableStatus.RESERVED -> TableTileVisualState.RESERVED
+    RestaurantTableStatus.CLEANING -> TableTileVisualState.CLEANING
+    RestaurantTableStatus.OUT_OF_SERVICE -> TableTileVisualState.OUT_OF_SERVICE
+    RestaurantTableStatus.OCCUPIED -> TableTileVisualState.OCCUPIED
+}
 
 /** AVAILABLE/RESERVED/CLEANING/OUT_OF_SERVICE/OCCUPIED mirror Admin's real
  * RestaurantTableStatus (plus the derived OCCUPIED) — same color language as
