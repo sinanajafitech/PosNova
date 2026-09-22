@@ -44,6 +44,12 @@ data class CreateOrderRequest(
      * — see Order.tipAmount on the Admin side. Null/0 behaves exactly as
      * before this field existed. */
     val tipAmount: Double? = null,
+    /** Generated once per order attempt (see NewOrderViewModel) and unchanged across every retry
+     * of the same logical order — including a later flush of this exact request from
+     * PendingOrderStore. Currently inert server-side; see BACKEND_HANDOFF_PROMPT.md. Without the
+     * backend deduping on it, a retry after the server already processed a create-order call
+     * (response lost to a timeout/dropped connection) can still create a duplicate order. */
+    val idempotencyKey: String,
 )
 
 @Serializable

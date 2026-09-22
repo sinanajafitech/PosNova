@@ -1,9 +1,16 @@
-# Spec: till-created order endpoint (not yet implemented)
+# Spec: till-created order endpoint
 
-**Status: design only.** Same situation as `BACKEND_CARD_PAYMENT_SPEC.md` — this describes a new
-endpoint for `AAtish/Admin` that doesn't exist yet. I don't have that codebase in this workspace,
-so this is a self-contained contract for a session with real access to apply, not something
-tested against real Prisma models or route conventions beyond what `openapi.yaml` documents.
+**Status: the base endpoint below is now live** — `FireHutDeviceApi.kt`'s `createOrder()` is
+marked "Real, live." and the Android app submits real orders through it today. This doc is kept
+for the request/response contract and the codebase-fit notes, which are still accurate. The **"QR
+payment for till-created orders" section below is still unimplemented** — `DeviceOrder` has no
+`paymentStatus` field yet, so the QR checkout flow (`NewOrderViewModel.kt`, search
+`paymentStatus`) is wired client-side but inert. See `BACKEND_HANDOFF_PROMPT.md` for the current,
+prioritized list of open backend work, including this and an idempotency-key gap on this same
+endpoint. I don't have the `AAtish/Admin` codebase in this workspace, so treat anything below not
+already confirmed live as a self-contained contract for a session with real access to apply, not
+something tested against real Prisma models or route conventions beyond what `openapi.yaml`
+documents.
 
 ## Why this is needed
 

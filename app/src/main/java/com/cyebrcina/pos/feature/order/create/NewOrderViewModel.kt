@@ -36,6 +36,7 @@ import com.cyebrcina.pos.printer.model.toPrintMode
 import com.cyebrcina.pos.printer.model.toPrinterPaperSize
 import com.cyebrcina.pos.printer.network.KitchenPrinterDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -555,6 +556,7 @@ class NewOrderViewModel @Inject constructor(
                     )
                 },
                 payment = CreateOrderPayment(method = "QR", amount = state.total),
+                idempotencyKey = UUID.randomUUID().toString(),
             )
 
             orderRepository.createOrder(request)
@@ -617,6 +619,7 @@ class NewOrderViewModel @Inject constructor(
             },
             payment = payment,
             tipAmount = state.tipAmountValue.takeIf { it > 0 },
+            idempotencyKey = UUID.randomUUID().toString(),
         )
 
         orderRepository.createOrder(request)
