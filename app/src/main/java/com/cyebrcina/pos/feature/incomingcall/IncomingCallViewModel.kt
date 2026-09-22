@@ -5,7 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.cyebrcina.pos.core.util.IncomingCallAlertPlayer
 import com.cyebrcina.pos.data.remote.realtime.FireHutRealtimeManager
 import com.cyebrcina.pos.data.remote.realtime.IncomingCallEvent
+import com.cyebrcina.pos.data.repository.OrderRepository
 import com.cyebrcina.pos.data.repository.PhoneContactRepository
+import com.cyebrcina.pos.feature.FeatureKeys
+import com.cyebrcina.pos.feature.isFeatureEnabled
 import com.cyebrcina.pos.feature.order.create.NewOrderEntryCoordinator
 import com.cyebrcina.pos.feature.order.create.NewOrderEntryIntent
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -30,6 +33,7 @@ class IncomingCallViewModel @Inject constructor(
     private val alertPlayer: IncomingCallAlertPlayer,
     private val phoneContactRepository: PhoneContactRepository,
     private val entryCoordinator: NewOrderEntryCoordinator,
+    private val orderRepository: OrderRepository,
 ) : ViewModel() {
 
     private val queue = MutableStateFlow<List<IncomingCallEvent>>(emptyList())
@@ -44,6 +48,11 @@ class IncomingCallViewModel @Inject constructor(
     init {
         realtimeManager.incomingCallEvents
             .onEach { event ->
+                // See Admin's Settings -> Feature Management. Dropped here rather than filtered
+                // at the socket/realtime layer, since that layer has no notion of features — the
+                // call itself is still recorded server-side either way, only the till's own
+                // popup/queue is suppressed.
+                if (!orderRepository.features.value.isFeatureEnabled(FeatureKeys.CALLS)) return@onEach
                 queue.update { it + event }
                 alertPlayer.play()
             }

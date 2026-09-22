@@ -3,6 +3,8 @@ package com.cyebrcina.pos.core.navigation
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -46,6 +48,20 @@ fun MainGraphHost(windowSizeClass: WindowSizeClass, onLoggedOut: () -> Unit) {
     val currentRoute = backStackEntry?.destination?.route
     val currentSection = MainSection.entries.firstOrNull { section -> currentRoute?.startsWith(section.route) == true }
         ?: MainSection.QUEUE
+    val mainGraphViewModel: MainGraphViewModel = hiltViewModel()
+    val visibleSections by mainGraphViewModel.visibleSections.collectAsState()
+
+    // Staff could already be on a tab (e.g. Calls) that an Admin just disabled out from under
+    // them mid-shift — rather than leaving them stranded on a tab no longer in the rail/bottom
+    // bar, bounce to Dashboard, same as a section the nav rail itself would never offer.
+    LaunchedEffect(visibleSections, currentSection) {
+        if (currentSection !in visibleSections) {
+            navController.navigate(MainRoutes.ORDER_QUEUE) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+            }
+        }
+    }
 
     // Mounted alongside MainScaffold (not inside its content slot) so it pops up over whichever
     // tab staff are on, and survives tab switches since it's scoped to this composable's own
@@ -56,6 +72,7 @@ fun MainGraphHost(windowSizeClass: WindowSizeClass, onLoggedOut: () -> Unit) {
     MainScaffold(
         windowSizeClass = windowSizeClass,
         currentSection = currentSection,
+        visibleSections = visibleSections,
         onSectionSelected = { section ->
             navController.navigate(section.route) {
                 popUpTo(navController.graph.findStartDestination().id) { saveState = true }

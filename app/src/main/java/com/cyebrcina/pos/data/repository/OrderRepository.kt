@@ -34,6 +34,9 @@ interface OrderRepository {
     val receiptPrefs: StateFlow<ReceiptPrefs?>
     val customerDisplay: StateFlow<CustomerDisplayConfig?>
     val cardTerminal: StateFlow<CardTerminalConfig?>
+    /** See Admin's Settings -> Feature Management. A key absent (e.g. before the first successful
+     * poll) is treated as "on" by [com.cyebrcina.pos.feature.FeatureFlags] — never as "off". */
+    val features: StateFlow<Map<String, Boolean>>
 
     /** See [com.cyebrcina.pos.data.local.ConnectivityObserver] — a fast, local "does the device
      * have a network path" signal, not proof the backend itself is reachable. */

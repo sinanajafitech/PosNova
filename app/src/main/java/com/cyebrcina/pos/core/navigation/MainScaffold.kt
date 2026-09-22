@@ -33,6 +33,9 @@ fun MainScaffold(
     currentSection: MainSection,
     onSectionSelected: (MainSection) -> Unit,
     modifier: Modifier = Modifier,
+    // See MainGraphViewModel.visibleSections — a section hidden by Feature Management (e.g.
+    // Calls) is simply left out of this list, same shape as showing every section always was.
+    visibleSections: List<MainSection> = MainSection.entries,
     content: @Composable (Modifier) -> Unit,
 ) {
     val useRail = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
@@ -40,7 +43,7 @@ fun MainScaffold(
     if (useRail) {
         Row(modifier = modifier.fillMaxSize()) {
             NavigationRail(containerColor = PosColors.White) {
-                MainSection.entries.forEach { section ->
+                visibleSections.forEach { section ->
                     NavigationRailItem(
                         selected = section == currentSection,
                         onClick = { onSectionSelected(section) },
@@ -63,7 +66,7 @@ fun MainScaffold(
             modifier = modifier,
             bottomBar = {
                 NavigationBar(containerColor = PosColors.White) {
-                    MainSection.entries.forEach { section ->
+                    visibleSections.forEach { section ->
                         NavigationBarItem(
                             selected = section == currentSection,
                             onClick = { onSectionSelected(section) },

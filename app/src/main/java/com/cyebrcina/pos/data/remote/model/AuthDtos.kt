@@ -24,6 +24,10 @@ data class LoginResponse(
     val logoUrl: String? = null,
     val customerDisplay: CustomerDisplayConfig? = null,
     val cardTerminal: CardTerminalConfig? = null,
+    /** See Admin's Settings -> Feature Management. Absent/missing keys mean "on" — the backend
+     * always resolves every known key with its own default before sending, so a key is only ever
+     * missing here against an app build that knows about a newer feature than the backend does. */
+    val features: Map<String, Boolean> = emptyMap(),
 )
 
 @Serializable

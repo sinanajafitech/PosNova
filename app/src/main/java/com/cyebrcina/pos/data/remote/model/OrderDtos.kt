@@ -96,6 +96,10 @@ data class PendingOrdersResponse(
     val notificationSoundUrl: String? = null,
     val customerDisplay: CustomerDisplayConfig? = null,
     val cardTerminal: CardTerminalConfig? = null,
+    /** See Admin's Settings -> Feature Management, LoginResponse.features. Polled every 15s
+     * alongside everything else here, so a toggle change reaches an already-logged-in till
+     * within one poll cycle instead of waiting for its next 180-day-token login. */
+    val features: Map<String, Boolean> = emptyMap(),
 )
 
 @Serializable
