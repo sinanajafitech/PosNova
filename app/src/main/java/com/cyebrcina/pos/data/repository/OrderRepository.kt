@@ -37,6 +37,10 @@ interface OrderRepository {
     /** See Admin's Settings -> Feature Management. A key absent (e.g. before the first successful
      * poll) is treated as "on" by [com.cyebrcina.pos.feature.FeatureFlags] — never as "off". */
     val features: StateFlow<Map<String, Boolean>>
+    /** See Admin's Settings -> Notification Sounds. Null means "play the device's own default
+     * notification sound" (see [com.cyebrcina.pos.core.util.NewOrderAlertPlayer]) — a data: URL
+     * when Admin has picked a custom upload. */
+    val notificationSoundUrl: StateFlow<String?>
 
     /** See [com.cyebrcina.pos.data.local.ConnectivityObserver] — a fast, local "does the device
      * have a network path" signal, not proof the backend itself is reachable. */

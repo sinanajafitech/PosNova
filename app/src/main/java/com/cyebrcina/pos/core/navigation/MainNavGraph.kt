@@ -30,6 +30,7 @@ import com.cyebrcina.pos.feature.register.RegisterScreen
 import com.cyebrcina.pos.feature.report.ReportScreen
 import com.cyebrcina.pos.feature.tools.ToolsScreen
 import com.cyebrcina.pos.feature.incomingcall.IncomingCallOverlay
+import com.cyebrcina.pos.feature.neworderalert.NewOrderAlertOverlay
 import com.cyebrcina.pos.feature.waitercall.WaiterCallOverlay
 import androidx.hilt.navigation.compose.hiltViewModel
 
@@ -68,6 +69,7 @@ fun MainGraphHost(windowSizeClass: WindowSizeClass, onLoggedOut: () -> Unit) {
     // lifetime rather than any one screen's.
     WaiterCallOverlay()
     IncomingCallOverlay(onTakeOrder = { navController.navigate(MainRoutes.NEW_ORDER_GRAPH) })
+    NewOrderAlertOverlay(onViewOrder = { orderId -> navController.navigate(MainRoutes.orderDetail(orderId)) })
 
     MainScaffold(
         windowSizeClass = windowSizeClass,

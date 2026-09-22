@@ -75,6 +75,9 @@ class FireHutOrderRepositoryImpl @Inject constructor(
     private val _features = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     override val features: StateFlow<Map<String, Boolean>> = _features
 
+    private val _notificationSoundUrl = MutableStateFlow<String?>(null)
+    override val notificationSoundUrl: StateFlow<String?> = _notificationSoundUrl
+
     override val isOnline: StateFlow<Boolean> = connectivityObserver.isOnline
 
     override val pendingOrderCount: StateFlow<Int> = pendingOrderStore.pendingOrders
@@ -127,6 +130,7 @@ class FireHutOrderRepositoryImpl @Inject constructor(
             body.customerDisplay?.let { _customerDisplay.value = it }
             body.cardTerminal?.let { _cardTerminal.value = it }
             _features.value = body.features
+            _notificationSoundUrl.value = body.notificationSoundUrl
             sessionStore.updateBranding(body.storeName, body.primaryColor, body.logoUrl)
         }.recoverCatching { throw mapNetworkError(it) }
         // A successful poll IS proof the backend is reachable — piggyback the queue flush on it
