@@ -22,6 +22,7 @@ import com.cyebrcina.pos.data.remote.model.MenuProductSize
 import com.cyebrcina.pos.data.remote.model.PaymentLinkResponse
 import com.cyebrcina.pos.data.remote.model.ReceiptData
 import com.cyebrcina.pos.data.remote.model.ReceiptItem
+import com.cyebrcina.pos.data.remote.realtime.FireHutRealtimeManager
 import com.cyebrcina.pos.data.repository.AuthRepository
 import com.cyebrcina.pos.data.repository.CreateOrderResult
 import com.cyebrcina.pos.data.repository.MenuRepository
@@ -141,6 +142,7 @@ class NewOrderViewModel @Inject constructor(
     private val entryCoordinator: NewOrderEntryCoordinator,
     private val kitchenPrinterDispatcher: KitchenPrinterDispatcher,
     private val currentStaffStore: CurrentStaffStore,
+    private val realtimeManager: FireHutRealtimeManager,
 ) : ViewModel() {
 
     private val session = MutableStateFlow<DeviceSession?>(null)
@@ -315,6 +317,15 @@ class NewOrderViewModel @Inject constructor(
             menuRepository.refresh().onFailure { menuError.value = it.message }
             isLoadingMenu.value = false
         }
+
+        // The menu (products, add-ons, modifier groups) is otherwise only fetched once, here, when
+        // this ViewModel is first created — since it's scoped to the New Order nav graph's own
+        // backstack entry (survives tab switches via restoreState), that could mean a till never
+        // sees a menu change made in Admin for the rest of its session unless the app is
+        // restarted. Backend already broadcasts menu_updated on exactly this kind of change (see
+        // ToolsViewModel's equivalent subscription for the 86-board) — this was just never wired
+        // up here, the one screen that actually renders per-product add-on scoping.
+        realtimeManager.menuEvents.onEach { refreshMenu() }.launchIn(viewModelScope)
 
         authRepository.session.onEach { session.value = it }.launchIn(viewModelScope)
 
